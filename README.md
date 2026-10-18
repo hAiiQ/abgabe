@@ -2,7 +2,13 @@
 
 Fertiges Mitgliederportal für Render.com, mit dunkler Oberfläche und grünen Akzenten. Die Vorlage wurde ausschließlich als gestalterische Orientierung verwendet.
 
-## Auf Render veröffentlichen
+## Einfach: ein Web Service ohne separate Datenbank
+
+Für **New → Web Service** gibt es jetzt die Variante mit SQLite auf einer Persistent Disk. Dabei wird nur ein bezahlter Web Service mit 1 GB Disk angelegt. Die vollständige Feld-für-Feld-Anleitung steht in [docs/RENDER-WEBSERVICE.md](docs/RENDER-WEBSERVICE.md).
+
+Wichtig sind die Disk mit Mount Path `/var/data` und die Umgebungsvariable `SQLITE_PATH=/var/data/portal.sqlite`. Konten, Abgaben und Einstellungen bleiben dort bei Neustarts und Deployments erhalten. Die Anwendung prüft auf Render, ob diese Disk tatsächlich eingehängt ist. Free unterstützt keine Persistent Disk.
+
+## Alternative: Blueprint mit PostgreSQL
 
 1. Den Inhalt dieses Ordners bzw. der ZIP-Datei in ein neues GitHub-Repository hochladen. `package.json`, `package-lock.json` und `render.yaml` müssen direkt im Hauptverzeichnis liegen. Die lokale `.env`, `data/` und `node_modules/` gehören **nicht** ins Repository und sind nicht im Lieferpaket enthalten.
 2. Bei [Render](https://dashboard.render.com/) **New → Blueprint** wählen und das Repository verbinden.
@@ -28,7 +34,7 @@ Statt eines Blueprints einen **Web Service** mit Node 22 aus diesem Repository a
 | `DATABASE_URL` | PostgreSQL-Verbindungsadresse; bei Render die Internal Database URL derselben Region |
 | `ADMIN_SETUP_CODE` | Eigener zufälliger Code, mindestens 16 Zeichen |
 
-In Produktion startet die Anwendung ohne PostgreSQL-Verbindung und gültigen Einrichtungscode absichtlich nicht. Es wird dort keine flüchtige SQLite-Datenbank angelegt.
+In Produktion verlangt die Anwendung einen gültigen Einrichtungscode und einen explizit eingerichteten Speicher: entweder `DATABASE_URL` für PostgreSQL oder `SQLITE_PATH` für die Persistent-Disk-Variante. Beide Speicherarten gleichzeitig zu setzen wird abgelehnt. Bei SQLite auf Render wird die eingehängte Disk geprüft.
 
 ## Was enthalten ist
 
@@ -77,7 +83,7 @@ npm.cmd start
 
 Dann [http://localhost:3000](http://localhost:3000) öffnen. Falls `.env` bereits existiert, diese weiterverwenden, statt sie zu überschreiben. Im aktuell eingerichteten Arbeitsordner ist bereits eine lokale `.env` mit einem zufälligen Einrichtungscode vorhanden. Diese Datei wird weder veröffentlicht noch mit verpackt.
 
-Ohne `DATABASE_URL` wird lokal `data/portal.sqlite` verwendet. Die SQLite-Datei enthält nur lokale Konten und Einträge und ist von der späteren Render-Datenbank getrennt. Node 22 zeigt dafür gegebenenfalls einen Hinweis zur experimentellen SQLite-Schnittstelle an. Auf Render wird ausschließlich PostgreSQL verwendet.
+Ohne `DATABASE_URL` und `SQLITE_PATH` wird lokal `data/portal.sqlite` verwendet. Die SQLite-Datei enthält nur lokale Konten und Einträge und ist vom späteren Render-Speicher getrennt. Node 22 zeigt dafür gegebenenfalls einen Hinweis zur experimentellen SQLite-Schnittstelle an. Auf Render sind PostgreSQL oder SQLite auf einer Persistent Disk möglich.
 
 ## Prüfung
 
@@ -88,7 +94,7 @@ npm.cmd test
 
 Die HTTP-Integrationstests verwenden eine eigene flüchtige Testdatenbank. Geprüft werden Registrierung, konkurrierende Registrierung, Anmeldung, Rollen, CSRF-/Herkunftsprüfung, Validierung, Notizsichtbarkeit, konkurrierende Freigaben, Teilabgaben, Überschüsse, Ablehnungen, Zieländerungen, Export, Wochenwechsel inklusive Zeitumstellung, Startdatum, Passwortwechsel und Sitzungsende. Die erweiterten Tests decken Mitglieder hinzufügen, Sperren/Freigeben, einmalige Wiederherstellungscodes, Resets mit Wiederherstellung und die Migration bestehender Konten ab. Zusätzlich wurden Anmeldung, Abgabeneingabe, Freigabe, Zieländerung, Mitglieder hinzufügen sowie Abgaben-Reset und Wiederherstellung in einer isolierten lokalen Browser-Testumgebung geprüft. Die Admin-Vorschau unter `docs/admin-vorschau.png` zeigt diese Testumgebung; das zusätzliche „Test Mitglied“ gehört nicht zur ausgelieferten Mitgliederliste.
 
-Der produktive PostgreSQL-Betrieb wird abschließend durch das erste Render-Deployment und den Datenbank-Healthcheck geprüft. Ein Live-Deployment wurde noch nicht durchgeführt.
+Zusätzlich prüfen die Speichertests die Konfiguration, den Schutz vor einer fehlenden Render-Disk sowie den Erhalt von Mitgliedern, Sitzungen und Abgaben nach Schließen und erneutem Öffnen der SQLite-Datei. Der produktive Render-Betrieb wird abschließend durch das erste Deployment und den Datenbank-Healthcheck geprüft. Ein Live-Deployment wurde noch nicht durchgeführt.
 
 ## Projektaufbau
 

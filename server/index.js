@@ -1,9 +1,9 @@
 import { createDatabase } from './database.js';
 import { createApp } from './app.js';
+import { storageOptions } from './storage.js';
 
 const production = process.env.NODE_ENV === 'production';
-if (production && !process.env.DATABASE_URL) throw new Error('Auf Render muss DATABASE_URL für die dauerhafte PostgreSQL-Datenbank gesetzt sein.');
-const db = await createDatabase({ url: process.env.DATABASE_URL });
+const db = await createDatabase(storageOptions());
 const app = createApp({ db, production, adminSetupCode: process.env.ADMIN_SETUP_CODE });
 const port = Number(process.env.PORT || 3000);
 const server = app.listen(port, '0.0.0.0', () => console.log(`Abgabenkonto: http://localhost:${port}`));
