@@ -2,6 +2,7 @@ const root = document.querySelector('#app');
 const modal = document.querySelector('#modal');
 let user = null, csrf = null, data = null, page = 'overview', authMode = 'login', memberSearch = '', memberFilter = 'all', selectedWeek = null;
 let toastTimer, refreshing = false, adminTab = 'members';
+let authWeeklyGoal = null;
 
 const paths = {
   arrows: '<path d="M5 15V5h10M9 19h10V9M5 5l6 6m8 8-6-6"/>',
@@ -64,12 +65,19 @@ function passwordField(name, label, autocomplete) {
   return `<label class="field"><span>${label}</span><div class="password-wrap"><input name="${name}" type="password" autocomplete="${autocomplete}" minlength="10" maxlength="128" required placeholder="${autocomplete === 'new-password' ? 'Mindestens 10 Zeichen' : 'Dein persönliches Passwort'}"><button type="button" data-action="toggle-password" aria-label="Passwort anzeigen">${icon('eye')}</button></div></label>`;
 }
 
+async function loadPublicGoal() {
+  const settings = await api('/public-settings');
+  authWeeklyGoal = settings.weeklyGoal;
+  const amount = document.querySelector('#auth-weekly-goal');
+  if (amount) amount.firstChild.textContent = `${number(authWeeklyGoal)} `;
+}
+
 function renderAuth() {
   const register = authMode === 'register';
   root.innerHTML = `<div class="auth-shell"><header class="header auth-header">${brand()}<span class="secure-label">${icon('shield')} Nur für unsere Mitglieder</span></header>
     <main id="main" class="auth-main"><div class="auth-grid"><section class="auth-copy"><span class="pill"><span class="status-dot"></span> Ein Team. Ein gemeinsamer Überblick.</span>
       <h1>Alles im Blick.<br><span>Jede Woche.</span></h1><p class="intro">Deine Abgaben, dein Fortschritt und das, was für dich bleibt. Alles an einem Ort. Klar und nachvollziehbar.</p>
-      <div class="auth-target"><div class="amount">250.000 <span>$</span></div><div class="target-label">Wöchentliches Abgabenziel<br>Der Rest gehört dir.</div></div>
+      <div class="auth-target"><div class="amount" id="auth-weekly-goal" aria-live="polite">${authWeeklyGoal === null ? '–' : number(authWeeklyGoal)} <span>$</span></div><div class="target-label">Wöchentliches Abgabenziel<br>Der Rest gehört dir.</div></div>
     </section><section class="auth-card" aria-label="Mitgliederzugang"><div class="card-icon">${icon(register ? 'people' : 'arrows')}</div><h2>${register ? 'Dein Platz im Team.' : 'Schön, dass du da bist.'}</h2><p class="subtitle">${register ? 'Mit deinem Namen registrieren und Passwort wählen.' : 'Melde dich an und behalte deine Woche im Blick.'}</p>
       <div class="auth-tabs" aria-label="Zugang wählen"><button class="${!register ? 'active' : ''}" data-action="auth-login" aria-pressed="${!register}">Anmelden</button><button class="${register ? 'active' : ''}" data-action="auth-register" aria-pressed="${register}">Zum ersten Mal hier?</button></div>
       <form id="auth-form"><div class="form-error" role="alert" hidden></div><label class="field"><span>Vor- und Nachname</span><input name="name" autocomplete="username" placeholder="z. B. Zak Shakur" required maxlength="100">${register ? '<small>Verwende deinen vollständigen Namen aus der Mitgliederliste.</small>' : ''}</label>
@@ -79,6 +87,7 @@ function renderAuth() {
       <div class="auth-bottom">${icon('lock')}<span>Persönlicher Zugang. Dein Passwort bleibt privat.</span></div></section></div>
       <section class="auth-steps" aria-label="So funktioniert es"><div class="auth-step"><span class="step-number">01</span><div><h3>Abgabe eintragen</h3><p>Trage ein, wie viel du an Michael Black oder Herbert Petersen abgegeben hast.</p></div></div><div class="auth-step"><span class="step-number">02</span><div><h3>Bestätigung erhalten</h3><p>Einer der beiden bestätigt deine Abgabe. Erst dann zählt sie für dein Konto.</p></div></div><div class="auth-step"><span class="step-number">03</span><div><h3>Den Rest behalten</h3><p>Alles über deinem Wochenziel wird separat als eigene Tasche ausgewiesen.</p></div></div></section>
     </main>${footer()}</div>`;
+  loadPublicGoal().catch(() => { /* Keep the last known goal during temporary network failures. */ });
 }
 
 async function loadDashboard({ quiet = false } = {}) {
@@ -310,9 +319,14 @@ async function init() {
 }
 await init();
 setInterval(async () => {
-  if (user && !document.hidden && !modal.open && !document.activeElement?.closest('form') && document.activeElement?.id !== 'member-search') {
+  if (document.hidden) return;
+  if (!user) { try { await loadPublicGoal(); } catch { /* Keep the form and last known goal. */ } return; }
+  if (!modal.open && !document.activeElement?.closest('form') && document.activeElement?.id !== 'member-search') {
     try { await loadDashboard({ quiet: true }); } catch { /* Keep the current screen during temporary network failures. */ }
   }
 }, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !user) loadPublicGoal().catch(() => {});
+});
 
 

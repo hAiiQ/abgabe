@@ -78,6 +78,13 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     res.json({ ok: true });
   });
   app.get('/api/session', (req, res) => res.json({ user: req.member || null, csrf: req.session?.csrf_token || null }));
+  app.get('/api/public-settings', async (_req, res) => {
+    const activeWeek = currentWeek(clock());
+    const week = activeWeek < FIRST_WEEK ? FIRST_WEEK : activeWeek;
+    const settings = await db.read((tx) => tx.get(`SELECT COALESCE(w.goal, s.weekly_goal) AS weekly_goal
+      FROM settings s LEFT JOIN weeks w ON w.id = ? WHERE s.id = 1`, [week]));
+    res.json({ week, weeklyGoal: Number(settings.weekly_goal) });
+  });
   app.post('/api/auth/register', authLimiter, async (req, res) => {
     const { name, password, setupCode, recoveryCode } = req.body;
     if (!validPassword(password)) fail(400, 'Dein Passwort muss 10 bis 128 Zeichen lang sein.');

@@ -78,6 +78,10 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
   const zak = client(), michael = client(), herbert = client(), outsider = client(), luana = client();
   let michaelId, herbertId, zakId;
   await t.test('Nur Mitglieder registrieren; Admin-Einrichtungscode ist erforderlich', async () => {
+    const publicSettings = await outsider.call('/public-settings');
+    assert.equal(publicSettings.status, 200);
+    assert.deepEqual(publicSettings.data, { week: '2026-10-19', weeklyGoal: 250000 });
+    assert.equal(publicSettings.headers.get('cache-control'), 'no-store');
     assert.equal((await outsider.call('/dashboard')).status, 401);
     assert.equal((await outsider.register('Fremde Person')).status, 400);
     assert.equal((await outsider.register('Zak Shakur', { password: 'kurz' })).status, 400);
@@ -142,9 +146,11 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
   });
   await t.test('Zieländerung rechnet die gewählte Woche neu; beide Admins dürfen verwalten', async () => {
     assert.equal((await herbert.call('/admin/settings', { week: '2026-10-19', goal: 300000, applyDefault: true })).status, 200);
+    assert.equal((await outsider.call('/public-settings')).data.weeklyGoal, 300000);
     let state = await zak.dashboard(), m = state.members.find((m) => m.id === zakId);
     assert.equal(m.credited, 300000); assert.equal(m.pocket, 50000); assert.equal(state.defaultGoal, 300000);
     assert.equal((await michael.call('/admin/settings', { week: '2026-10-19', goal: 400000, applyDefault: false })).status, 200);
+    assert.equal((await outsider.call('/public-settings')).data.weeklyGoal, 400000);
     state = await zak.dashboard(); m = state.members.find((m) => m.id === zakId);
     assert.equal(m.remaining, 50000); assert.equal(m.pocket, 0); assert.equal(state.defaultGoal, 300000);
     assert.equal(state.activity.length, 0); assert.ok((await michael.dashboard()).activity.length > 0);
@@ -157,7 +163,13 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
   await t.test('Wochenwechsel setzt Konten zurück, erhält Historie und offene Freigaben', async () => {
     await luana.call('/payments', { amount: 100000, week: '2026-10-19', recipientId: michaelId });
     now = new Date('2026-10-25T23:00:00Z');
+    // Before the new week has been created, the public page uses the configured default.
+    assert.deepEqual((await outsider.call('/public-settings')).data, { week: '2026-10-26', weeklyGoal: 300000 });
     let state = await zak.dashboard(); assert.equal(state.week.id, '2026-10-26'); assert.equal(state.week.goal, 300000);
+    // Editing the previous week's default does not replace the running week's own goal.
+    await michael.call('/admin/settings', { week: '2026-10-19', goal: 400000, applyDefault: true });
+    assert.equal((await outsider.call('/public-settings')).data.weeklyGoal, 300000);
+    await michael.call('/admin/settings', { week: '2026-10-26', goal: 300000, applyDefault: true });
     assert.equal(state.members.find((m) => m.id === zakId).accepted, 0); assert.equal(state.payments.length, 0);
     assert.equal((await zak.call('/payments', { amount: 10, week: '2026-10-19', recipientId: michaelId })).status, 400);
     state = await michael.dashboard('2026-10-19');
@@ -170,6 +182,7 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
   });
   await t.test('Vor dem Start sind Registrierung und Übersicht verfügbar, aber keine Einträge', async () => {
     now = new Date('2026-10-18T21:00:00Z');
+    assert.deepEqual((await outsider.call('/public-settings')).data, { week: '2026-10-19', weeklyGoal: 400000 });
     const state = await zak.dashboard(); assert.equal(state.week.id, '2026-10-19'); assert.equal(state.week.canSubmit, false);
     assert.equal((await zak.call('/payments', { amount: 1, week: '2026-10-19', recipientId: michaelId })).status, 400);
     now = new Date('2026-10-26T12:00:00Z');

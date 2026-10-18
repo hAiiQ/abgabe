@@ -74,6 +74,8 @@ Beispiel: Ein Mitglied trägt 200.000 $ und anschließend 150.000 $ ein. Erst na
 
 Offene oder abgelehnte Einträge werden nicht gutgeschrieben. Zum Wochenwechsel beginnt der Wochenstand wieder bei null; die vergangenen Wochen bleiben erhalten. „Eigene Tasche“ wird ebenfalls je Woche angezeigt und exportiert. Das Portal dokumentiert die Abgaben, es überträgt kein Geld.
 
+Die Startseite zeigt auch ohne Anmeldung das Ziel der laufenden Woche an. Änderungen werden beim Öffnen und auf einer sichtbaren Startseite alle 30 Sekunden geladen. Vor dem ersten Wochenstart gilt das Ziel der ersten Abgabenwoche; Änderungen an vergangenen Wochen ersetzen nicht das aktuelle Ziel.
+
 ## Lokal starten
 
 Voraussetzung: Node.js **22.17 oder neuer innerhalb der 22er-Reihe**.
