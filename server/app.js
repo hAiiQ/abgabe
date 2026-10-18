@@ -93,7 +93,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
       if (!current?.active || current.password_hash || current.reset_token_hash !== member.reset_token_hash) fail(409, 'Dieser Zugang wurde zwischenzeitlich geändert. Bitte erneut versuchen.');
       const result = await tx.run(`UPDATE members SET password_hash = ?, registered_at = ?, reset_token_hash = NULL
         WHERE id = ? AND password_hash IS NULL AND active = 1
-        AND (reset_token_hash = ? OR (reset_token_hash IS NULL AND ? IS NULL))`,
+        AND (reset_token_hash = ? OR (reset_token_hash IS NULL AND CAST(? AS TEXT) IS NULL))`,
       [hash, clock().toISOString(), member.id, member.reset_token_hash, member.reset_token_hash]);
       if (result.rowCount !== 1) fail(409, 'Dieser Name ist bereits registriert. Bitte melde dich an.');
       return createSession(tx, member.id);
@@ -170,7 +170,8 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const payments = data.payments.map((p) => ({ ...p, note: req.member.role === 'admin' || p.member_id === req.member.id ? p.note : '', review_note: req.member.role === 'admin' || p.member_id === req.member.id ? p.review_note : '' }));
     res.json({ user: req.member, csrf: req.session.csrf_token, timeZone: TIME_ZONE, now: now.toISOString(), activeWeek,
       week: { id: data.week.id, end: addDays(data.week.id, 7), goal: data.week.goal, canSubmit: selected === activeWeek && activeWeek >= FIRST_WEEK },
-      weeks: data.weeks, defaultGoal: data.settings.weekly_goal, members, payments, resets: data.resets,
+      weeks: data.weeks, defaultGoal: data.settings.weekly_goal, members, payments,
+      resets: data.resets.map((reset) => ({ ...reset, payment_count: Number(reset.payment_count), total: Number(reset.total) })),
       activity: req.member.role === 'admin' ? data.activity.map((item) => ({ ...item, details: JSON.parse(item.details) })) : [],
     });
   });

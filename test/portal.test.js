@@ -7,6 +7,7 @@ import { currentWeek, validWeek } from '../server/weeks.js';
 import { resolve } from 'node:path';
 import { rmSync, mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { createPortalTestDatabase } from './database-fixture.js';
 
 const setupCode = 'test-admin-code-not-for-production';
 const password = 'EinSicheresTestpasswort42!';
@@ -48,13 +49,14 @@ test('Kalenderwochen in Berlin: Start, Sonntag, Winterzeit und exklusives Ende',
 });
 
 test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', async (t) => {
-  const db = await createDatabase({ sqlitePath: ':memory:' });
+  const fixture = await createPortalTestDatabase();
+  const { db } = fixture;
   let now = new Date('2026-10-20T12:00:00Z');
   const app = createApp({ db, adminSetupCode: setupCode, clock: () => now, disableRateLimit: true });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  t.after(async () => { await new Promise((done) => server.close(done)); await db.close(); });
+  t.after(async () => { await new Promise((done) => server.close(done)); await fixture.close(); });
   function client() {
     let cookie = '', csrf = '';
     return {
@@ -235,6 +237,7 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
     assert.equal(state.payments.filter((p) => p.member_id === zakId).length, 0);
     assert.equal(state.members.find((m) => m.name === 'Luana Velaris').accepted, 100000);
     assert.equal(state.resets.find((r) => r.id === reset.data.resetId).payment_count, 3);
+    assert.equal(state.resets.find((r) => r.id === reset.data.resetId).total, 1250000);
     assert.equal((await zak.dashboard('2026-10-19')).resets.length, 0);
     const csv = await michael.call('/export?week=2026-10-19');
     assert.match(csv.data, /"Zak Shakur";"400000";"0";"0";"0"/);

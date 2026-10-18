@@ -98,7 +98,9 @@ npm.cmd test
 
 Die HTTP-Integrationstests verwenden eine eigene flüchtige Testdatenbank. Geprüft werden Registrierung, konkurrierende Registrierung, Anmeldung, Rollen, CSRF-/Herkunftsprüfung, Validierung, Notizsichtbarkeit, konkurrierende Freigaben, Teilabgaben, Überschüsse, Ablehnungen, Zieländerungen, Export, Wochenwechsel inklusive Zeitumstellung, Startdatum, Passwortwechsel und Sitzungsende. Die erweiterten Tests decken Mitglieder hinzufügen, Sperren/Freigeben, einmalige Wiederherstellungscodes, Resets mit Wiederherstellung und die Migration bestehender Konten ab. Zusätzlich wurden Anmeldung, Abgabeneingabe, Freigabe, Zieländerung, Mitglieder hinzufügen sowie Abgaben-Reset und Wiederherstellung in einer isolierten lokalen Browser-Testumgebung geprüft. Die Admin-Vorschau unter `docs/admin-vorschau.png` zeigt diese Testumgebung; das zusätzliche „Test Mitglied“ gehört nicht zur ausgelieferten Mitgliederliste.
 
-Zusätzlich prüfen die Speichertests die Konfiguration, den Schutz vor einer fehlenden Render-Disk sowie den Erhalt von Mitgliedern, Sitzungen und Abgaben nach Schließen und erneutem Öffnen der SQLite-Datei. Der produktive Render-Betrieb wird abschließend durch das erste Deployment und den Datenbank-Healthcheck geprüft. Ein Live-Deployment wurde noch nicht durchgeführt.
+Zusätzlich prüfen die Speichertests die Konfiguration, den Schutz vor einer fehlenden Render-Disk sowie den Erhalt von Mitgliedern, Sitzungen und Abgaben nach Schließen und erneutem Öffnen der SQLite-Datei. Der produktive Render-Betrieb wird durch Deployment und Datenbank-Healthcheck geprüft.
+
+Mit `TEST_DATABASE_URL` können dieselben HTTP-Integrationstests zusätzlich gegen echtes PostgreSQL ausgeführt werden. Der Testlauf legt dafür ein eigenes zufällig benanntes Schema an und entfernt ausschließlich dieses Schema nach dem Test. Bestehende Mitgliederdaten werden nicht verwendet. Ohne diese Variable verwenden die Tests weiterhin SQLite im Arbeitsspeicher. Beide Varianten prüfen insbesondere Erstregistrierung und erneute Registrierung nach einem Zugang-Reset.
 
 ## Projektaufbau
 
