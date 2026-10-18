@@ -2,7 +2,11 @@
 
 Fertiges Mitgliederportal für Render.com, mit dunkler Oberfläche und grünen Akzenten. Die Vorlage wurde ausschließlich als gestalterische Orientierung verwendet.
 
-## Einfach: ein Web Service ohne separate Datenbank
+## Kostenlos: Render Free + Neon Free
+
+Für den Betrieb ohne laufende Gebühren innerhalb der Free-Kontingente verwende Render Free für den Web Service und Neon Free für die PostgreSQL-Datenbank. Eine Render-Disk ist dabei nicht nötig. Die vollständige Anleitung steht in [docs/RENDER-KOSTENLOS.md](docs/RENDER-KOSTENLOS.md). Der Code unterstützt diese Variante bereits über `DATABASE_URL`; `SQLITE_PATH` bleibt ungesetzt. Für einen neuen kostenlosen Blueprint gibt es `render.free.yaml` (ohne Render-Datenbank und ohne Disk).
+
+## Kostenpflichtige Alternative: ein Web Service ohne separate Datenbank
 
 Für **New → Web Service** gibt es jetzt die Variante mit SQLite auf einer Persistent Disk. Dabei wird nur ein bezahlter Web Service mit 1 GB Disk angelegt. Die vollständige Feld-für-Feld-Anleitung steht in [docs/RENDER-WEBSERVICE.md](docs/RENDER-WEBSERVICE.md).
 

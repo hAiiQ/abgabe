@@ -1,0 +1,20 @@
+# Kostenlose Variante: Render Free + externe PostgreSQL-Datenbank im Free-Tarif.
+# DATABASE_URL beispielsweise aus Neon Free übernehmen; keine Render-Datenbank und keine Disk.
+services:
+  - type: web
+    name: abgabenkonto
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: ADMIN_SETUP_CODE
+        sync: false
+      - key: DATABASE_URL
+        sync: false
