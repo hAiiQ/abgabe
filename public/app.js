@@ -122,13 +122,13 @@ function pageTop() {
   const index = data.weeks.findIndex((w) => w.id === selectedWeek);
   return `<div class="page-top"><div class="page-title"><div class="eyebrow"><span class="status-dot"></span> ${eyebrow}</div><h1>${title}</h1><p>${subtitle}</p></div><div class="week-controls"><button class="icon-button" data-action="week-prev" aria-label="Vorherige Woche" ${index === data.weeks.length - 1 ? 'disabled' : ''}>${icon('left')}</button><label class="week-select">${icon('calendar')}<select id="week-select" aria-label="Abgabenwoche">${data.weeks.map((w) => `<option value="${w.id}" ${w.id === selectedWeek ? 'selected' : ''}>${weekLabel(w.id)}</option>`).join('')}</select></label><button class="icon-button" data-action="week-next" aria-label="Nächste Woche" ${index === 0 ? 'disabled' : ''}>${icon('chevron')}</button></div></div>`;
 }
-function statCard(label, value, hint, symbol, currency = true) {
-  return `<div class="stat-card"><div class="stat-head"><span>${label}</span>${icon(symbol)}</div><div class="stat-value">${value}${currency ? '<span class="currency">$</span>' : ''}</div><p class="stat-foot">${hint}</p></div>`;
+function statCard(label, value, hint, symbol, currency = true, extraClass = '') {
+  return `<div class="stat-card${extraClass ? ` ${extraClass}` : ''}"><div class="stat-head"><span>${label}</span>${icon(symbol)}</div><div class="stat-value">${value}${currency ? '<span class="currency">$</span>' : ''}</div><p class="stat-foot">${hint}</p></div>`;
 }
 function stats() {
   const credited = data.members.reduce((s, m) => s + m.credited, 0), pocket = data.members.reduce((s, m) => s + m.pocket, 0);
   const paid = teamMembers().filter((m) => m.remaining === 0).length, pending = data.payments.filter((p) => p.status === 'pending').length;
-  return `<section class="stats-grid" aria-label="Wochenstatistik">${statCard('Bestätigte Wochenabgaben', number(credited), `von ${money(data.week.goal * teamMembers().length)} Wochenziel`, 'wallet')}${statCard('Eigene Tasche · gesamt', number(pocket), 'Bestätigter Überschuss aller Mitglieder', 'chart')}${statCard('Wochenziel erreicht', `${paid}<span class="currency">/ ${teamMembers().length}</span>`, 'Mitglieder haben ihre Abgabe erfüllt', 'people', false)}${statCard('Wartet auf Bestätigung', String(pending), `${money(data.members.reduce((s, m) => s + m.pending, 0))} in Prüfung`, 'clock', false)}</section>`;
+  return `<section class="stats-grid" aria-label="Wochenstatistik">${statCard('Gesamtbetrag', number(credited + pocket), 'Abgaben + eigene Tasche · bestätigt', 'wallet', true, 'stat-card-total')}${statCard('Bestätigte Wochenabgaben', number(credited), `von ${money(data.week.goal * teamMembers().length)} Wochenziel`, 'wallet')}${statCard('Eigene Tasche · gesamt', number(pocket), 'Bestätigter Überschuss aller Mitglieder', 'chart')}${statCard('Wochenziel erreicht', `${paid}<span class="currency">/ ${teamMembers().length}</span>`, 'Mitglieder haben ihre Abgabe erfüllt', 'people', false)}${statCard('Wartet auf Bestätigung', String(pending), `${money(data.members.reduce((s, m) => s + m.pending, 0))} in Prüfung`, 'clock', false)}</section>`;
 }
 function ownCard() {
   const m = mine(), progress = Math.min(100, Math.round(m.credited / data.week.goal * 100));

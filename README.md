@@ -76,6 +76,8 @@ Offene oder abgelehnte Einträge werden nicht gutgeschrieben. Zum Wochenwechsel 
 
 Die Startseite zeigt auch ohne Anmeldung das Ziel der laufenden Woche an. Änderungen werden beim Öffnen und auf einer sichtbaren Startseite alle 30 Sekunden geladen. Vor dem ersten Wochenstart gilt das Ziel der ersten Abgabenwoche; Änderungen an vergangenen Wochen ersetzen nicht das aktuelle Ziel.
 
+In der Wochenübersicht zeigt **Gesamtbetrag** die Summe aller bestätigten Abgabenkonten und der eigenen Taschen für die ausgewählte Woche. Offene und abgelehnte Einträge werden nicht mitgerechnet. Erfasste Beträge entfernter Mitglieder bleiben enthalten.
+
 ## Lokal starten
 
 Voraussetzung: Node.js **22.17 oder neuer innerhalb der 22er-Reihe**.
