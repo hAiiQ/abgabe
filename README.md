@@ -80,6 +80,12 @@ In der Wochenübersicht zeigt **Gesamtbetrag** die Summe aller bestätigten Abga
 
 Die eigene Tasche wird pro Person zusätzlich als **Grüngeld nach 30 % Abzug** ausgewiesen: 100.000 $ Schwarzgeld entsprechen 70.000 $ Grüngeld. Die Berechnung verwendet nur den bestätigten Überschuss über dem Wochenziel und wird bei Zieländerungen neu berechnet. Die zusätzliche Anzeige steht in der Mitgliederliste, im persönlichen Konto und im CSV-Export. Bei Bruchteilen werden zwei Nachkommastellen angezeigt; der CSV-Export verwendet ein deutsches Dezimalkomma. Der Gesamtbetrag summiert weiterhin die ursprünglichen Schwarzgeldbeträge.
 
+### Eigene Tasche als ausgezahlt markieren
+
+Michael und Herbert sehen in der Mitgliederübersicht pro Person die Spalte **Auszahlung**. Mit **Ausgezahlt** wird der aktuell offene Betrag der eigenen Tasche für die ausgewählte Woche als ausgezahlt markiert. Der Status mit Grüngeldbetrag, Datum und Administrator ist auch für Mitglieder sichtbar und wird im persönlichen Konto sowie im CSV-Export angezeigt. Abgaben- und Taschenbeträge bleiben als Wochenübersicht erhalten.
+
+Die Markierung speichert den bestätigten Betrag zum Zeitpunkt des Klicks. Zusätzlicher Überschuss wird anschließend als **Teilweise ausgezahlt** mit offenem Rest angezeigt; **Rest ausgezahlt** markiert auch diesen Anteil. Zieländerungen und Abgaben-Resets löschen frühere Auszahlungsmarkierungen nicht. Jede Woche hat ihren eigenen Status. **Markierung zurücknehmen** hebt die gesamte Auszahlungsmarkierung dieser Person für die gewählte Woche auf; die Änderung bleibt im Verwaltungsprotokoll erhalten. Bei gleichzeitig geänderten Beträgen oder Markierungen muss die Übersicht vor dem erneuten Klick aktualisiert werden.
+
 ## Lokal starten
 
 Voraussetzung: Node.js **22.17 oder neuer innerhalb der 22er-Reihe**.

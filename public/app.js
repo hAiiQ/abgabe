@@ -130,25 +130,37 @@ function stats() {
   const paid = teamMembers().filter((m) => m.remaining === 0).length, pending = data.payments.filter((p) => p.status === 'pending').length;
   return `<section class="stats-grid" aria-label="Wochenstatistik">${statCard('Gesamtbetrag', number(credited + pocket), 'Schwarzgeld · Abgaben + eigene Tasche', 'wallet', true, 'stat-card-total')}${statCard('Bestätigte Wochenabgaben', number(credited), `von ${money(data.week.goal * teamMembers().length)} Wochenziel`, 'wallet')}${statCard('Eigene Tasche · Schwarzgeld', number(pocket), 'Bestätigter Überschuss aller Mitglieder', 'chart')}${statCard('Wochenziel erreicht', `${paid}<span class="currency">/ ${teamMembers().length}</span>`, 'Mitglieder haben ihre Abgabe erfüllt', 'people', false)}${statCard('Wartet auf Bestätigung', String(pending), `${money(data.members.reduce((s, m) => s + m.pending, 0))} in Prüfung`, 'clock', false)}</section>`;
 }
+function payoutStatus(member, controls = false) {
+  const payout = member.payout;
+  if (!payout) return '<span class="muted">–</span>';
+  if (payout.status === 'none') return '<span class="muted">Kein Überschuss</span>';
+  const label = { open: 'Offen', partial: 'Teilweise ausgezahlt', paid: 'Ausgezahlt' }[payout.status];
+  return `<div class="payout-state"><span class="badge ${payout.status === 'paid' ? 'accepted' : payout.status === 'partial' ? 'pending' : 'open'}">${label}</span>
+    ${payout.paidAt ? `<small>${money(payout.paidGreen)} Grüngeld ausgezahlt<br>${dateTime(payout.paidAt)} Uhr · ${esc(payout.paidBy)}</small>` : ''}
+    ${payout.remainingGreen > 0 ? `<small>Noch ${money(payout.remainingGreen)} Grüngeld offen</small>` : ''}
+    ${controls && admin() && payout.remainingPocket > 0 ? `<button class="btn btn-primary btn-sm" data-action="mark-payout" data-member="${member.id}" aria-label="Eigene Tasche von ${esc(member.name)} als ausgezahlt markieren">${icon('check')} ${payout.status === 'partial' ? 'Rest ausgezahlt' : 'Ausgezahlt'}</button>` : ''}
+    ${controls && admin() && payout.paidAt ? `<button class="text-button" data-action="undo-payout" data-member="${member.id}" aria-label="Auszahlungsmarkierung von ${esc(member.name)} zurücknehmen">Markierung zurücknehmen</button>` : ''}
+  </div>`;
+}
 function ownCard() {
   const m = mine(), progress = Math.min(100, Math.round(m.credited / data.week.goal * 100));
-  return `<section class="own-card"><div class="eyebrow">DEIN ABGABENKONTO ${icon('wallet')}</div><h2>Dein Fortschritt.</h2><p class="own-sub">${weekLabel(selectedWeek)}</p><div class="own-amount">${number(m.credited)} <span>$</span><small> / ${money(data.week.goal)}</small></div><progress class="mini-progress own-progress" max="100" value="${progress}" aria-label="Dein Wochenfortschritt: ${progress} Prozent"></progress><div class="progress-labels"><span>${progress} % erreicht</span><span>${m.remaining ? `Noch ${money(m.remaining)}` : 'Wochenziel erfüllt'}</span></div><div class="own-breakdown"><div><span>Bestätigt gesamt</span><strong>${money(m.accepted)}</strong></div><div><span>Eigene Tasche · Schwarzgeld</span><strong class="pocket-total">${money(m.pocket)}</strong></div><div class="green-breakdown"><span>Grüngeld · 30 % Abzug</span><strong class="green-pocket-total">${money(m.greenPocket)}</strong></div><div><span>Dein Wochenziel</span><strong>${money(data.week.goal)}</strong></div></div><button class="btn btn-primary btn-wide" data-action="new-payment" ${!data.week.canSubmit ? 'disabled' : ''}>${icon('plus')} Abgabe eintragen</button>${m.pending ? `<p class="own-pending">${icon('clock')} ${money(m.pending)} warten auf Bestätigung.</p>` : ''}</section>`;
+  return `<section class="own-card"><div class="eyebrow">DEIN ABGABENKONTO ${icon('wallet')}</div><h2>Dein Fortschritt.</h2><p class="own-sub">${weekLabel(selectedWeek)}</p><div class="own-amount">${number(m.credited)} <span>$</span><small> / ${money(data.week.goal)}</small></div><progress class="mini-progress own-progress" max="100" value="${progress}" aria-label="Dein Wochenfortschritt: ${progress} Prozent"></progress><div class="progress-labels"><span>${progress} % erreicht</span><span>${m.remaining ? `Noch ${money(m.remaining)}` : 'Wochenziel erfüllt'}</span></div><div class="own-breakdown"><div><span>Bestätigt gesamt</span><strong>${money(m.accepted)}</strong></div><div><span>Eigene Tasche · Schwarzgeld</span><strong class="pocket-total">${money(m.pocket)}</strong></div><div class="green-breakdown"><span>Grüngeld · 30 % Abzug</span><strong class="green-pocket-total">${money(m.greenPocket)}</strong></div><div><span>Dein Wochenziel</span><strong>${money(data.week.goal)}</strong></div></div><div class="own-payout"><h3>Auszahlung eigene Tasche</h3>${payoutStatus(m)}</div><button class="btn btn-primary btn-wide" data-action="new-payment" ${!data.week.canSubmit ? 'disabled' : ''}>${icon('plus')} Abgabe eintragen</button>${m.pending ? `<p class="own-pending">${icon('clock')} ${money(m.pending)} warten auf Bestätigung.</p>` : ''}</section>`;
 }
 function infoPanel() {
   return `<section class="panel info-panel"><h3>${icon('info')} Gut zu wissen</h3><p>Dein Wochenziel liegt bei <strong>${money(data.week.goal)}</strong>. Jeder bestätigte Dollar darüber geht als Schwarzgeld in deine eigene Tasche. Dein Grüngeldwert beträgt davon 70 % nach 30 % Abzug.</p><div class="divider"></div><h3>${icon('shield')} Deine Ansprechpartner</h3><div class="info-row">${avatar('Michael Black')} Michael Black <span class="outline-tag">ADMIN</span></div><div class="info-row">${avatar('Herbert Petersen', 2)} Herbert Petersen <span class="outline-tag">ADMIN</span></div>${admin() ? `<button class="text-button" data-page="settings" data-admin-section="general">Wochenziel verwalten ${icon('arrow')}</button>` : ''}</section>`;
 }
 function overview() {
-  return `${stats()}<div class="content-grid"><section class="panel"><div class="panel-header"><div><div class="panel-title">${icon('people')}<h2>Die Mitglieder im Überblick</h2><small>${teamMembers().length}</small></div><p class="panel-subtitle">Ein gemeinsamer Stand für die gesamte Woche.</p></div>${admin() ? `<a class="icon-button" href="/api/export?week=${selectedWeek}" download title="Wochenübersicht als CSV exportieren" aria-label="Wochenübersicht als CSV exportieren">${icon('download')}</a>` : ''}</div><div class="toolbar"><label class="search">${icon('search')}<input id="member-search" aria-label="Mitglieder suchen" placeholder="Mitglied suchen …" value="${esc(memberSearch)}"></label><div class="filter-group" aria-label="Mitglieder filtern">${[['all','Alle'],['open','Offen'],['accepted','Erfüllt']].map(([key,label]) => `<button class="filter-btn ${memberFilter === key ? 'active' : ''}" data-filter="${key}" aria-pressed="${memberFilter === key}">${label}</button>`).join('')}</div></div><div class="table-scroll"><table><thead><tr><th scope="col">Mitglied</th><th scope="col">Abgabenkonto</th><th scope="col">Eigene Tasche<small class="money-type">Schwarzgeld</small></th><th scope="col">Grüngeld<small class="money-type">30 % Abzug</small></th><th scope="col">Status</th></tr></thead><tbody id="member-rows">${memberRows()}</tbody></table></div><div class="table-bottom"><span id="member-count">${filteredMembers().length} von ${teamMembers().length} Mitgliedern</span><span class="legend"><span class="status-dot"></span> Nur bestätigte Beträge</span></div></section><aside class="sidebar">${ownCard()}${infoPanel()}</aside></div>`;
+  return `${stats()}<div class="content-grid"><section class="panel"><div class="panel-header"><div><div class="panel-title">${icon('people')}<h2>Die Mitglieder im Überblick</h2><small>${teamMembers().length}</small></div><p class="panel-subtitle">Ein gemeinsamer Stand für die gesamte Woche.</p></div>${admin() ? `<a class="icon-button" href="/api/export?week=${selectedWeek}" download title="Wochenübersicht als CSV exportieren" aria-label="Wochenübersicht als CSV exportieren">${icon('download')}</a>` : ''}</div><div class="toolbar"><label class="search">${icon('search')}<input id="member-search" aria-label="Mitglieder suchen" placeholder="Mitglied suchen …" value="${esc(memberSearch)}"></label><div class="filter-group" aria-label="Mitglieder filtern">${[['all','Alle'],['open','Offen'],['accepted','Erfüllt']].map(([key,label]) => `<button class="filter-btn ${memberFilter === key ? 'active' : ''}" data-filter="${key}" aria-pressed="${memberFilter === key}">${label}</button>`).join('')}</div></div><div class="table-scroll"><table><thead><tr><th scope="col">Mitglied</th><th scope="col">Abgabenkonto</th><th scope="col">Eigene Tasche<small class="money-type">Schwarzgeld</small></th><th scope="col">Grüngeld<small class="money-type">30 % Abzug</small></th><th scope="col">Status</th><th scope="col">Auszahlung</th></tr></thead><tbody id="member-rows">${memberRows()}</tbody></table></div><div class="table-bottom"><span id="member-count">${filteredMembers().length} von ${teamMembers().length} Mitgliedern</span><span class="legend"><span class="status-dot"></span> Nur bestätigte Beträge</span></div></section><aside class="sidebar">${ownCard()}${infoPanel()}</aside></div>`;
 }
 function filteredMembers() {
   return teamMembers().filter((m) => m.name.toLocaleLowerCase('de-DE').includes(memberSearch.toLocaleLowerCase('de-DE')) && (memberFilter === 'all' || (memberFilter === 'open' ? m.remaining > 0 : m.remaining === 0)));
 }
 function memberRows() {
   const members = filteredMembers();
-  if (!members.length) return '<tr><td colspan="5"><div class="empty"><h3>Kein Mitglied gefunden.</h3><p>Versuche einen anderen Namen oder Filter.</p></div></td></tr>';
+  if (!members.length) return '<tr><td colspan="6"><div class="empty"><h3>Kein Mitglied gefunden.</h3><p>Versuche einen anderen Namen oder Filter.</p></div></td></tr>';
   return members.map((m) => {
     const status = m.remaining === 0 ? 'accepted' : m.pending ? 'pending' : 'open';
-    return `<tr><td><div class="name-cell">${avatar(m.name, data.members.indexOf(m))}<span>${esc(m.name)}${m.id === user.id ? '<span class="me-tag">Du</span>' : ''}${m.role === 'admin' ? '<span class="admin-label">Administrator</span>' : ''}</span></div></td><td class="amount-cell">${money(m.credited)}<progress class="mini-progress" max="${data.week.goal}" value="${m.credited}" aria-label="Wochenziel von ${esc(m.name)}"></progress></td><td class="amount-cell pocket-cell">${m.pocket ? '+' : ''}${money(m.pocket)}</td><td class="amount-cell green-money">${money(m.greenPocket)}</td><td>${badge(status)}</td></tr>`;
+    return `<tr><td><div class="name-cell">${avatar(m.name, data.members.indexOf(m))}<span>${esc(m.name)}${m.id === user.id ? '<span class="me-tag">Du</span>' : ''}${m.role === 'admin' ? '<span class="admin-label">Administrator</span>' : ''}</span></div></td><td class="amount-cell">${money(m.credited)}<progress class="mini-progress" max="${data.week.goal}" value="${m.credited}" aria-label="Wochenziel von ${esc(m.name)}"></progress></td><td class="amount-cell pocket-cell">${m.pocket ? '+' : ''}${money(m.pocket)}</td><td class="amount-cell green-money">${money(m.greenPocket)}</td><td>${badge(status)}</td><td class="payout-cell">${payoutStatus(m, true)}</td></tr>`;
   }).join('');
 }
 function history() {
@@ -174,6 +186,8 @@ function auditText(entry) {
     member_disabled: `hat den Zugang von ${d.name} gesperrt.`,
     member_enabled: `hat den Zugang von ${d.name} wieder freigegeben.`,
     member_access_reset: `hat den Zugang von ${d.name} zurückgesetzt.`,
+    pocket_paid: `hat die eigene Tasche von ${d.name} für die Woche ab ${d.week} als ausgezahlt markiert (${money(d.greenAmount)} Grüngeld).`,
+    pocket_payment_undone: `hat die Auszahlungsmarkierung von ${d.name} für die Woche ab ${d.week} zurückgenommen.`,
     payments_reset: `hat ${d.count} Abgabeneinträge ${d.name ? `von ${d.name} ` : ''}für die Woche ab ${d.week} zurückgesetzt.`,
     payments_restored: `hat ${d.count} zurückgesetzte Abgabeneinträge wiederhergestellt.`,
   };
@@ -257,6 +271,16 @@ document.addEventListener('click', async (event) => {
     if (action === 'account') accountModal();
     if (action === 'add-member') addMemberModal();
     if (action === 'restore-member') membershipModal(button.dataset.id, true);
+    if (action === 'mark-payout' || action === 'undo-payout') {
+      button.disabled = true;
+      const member = data.members.find((m) => m.id === button.dataset.member);
+      if (!member?.payout) throw new Error('Bitte aktualisiere die Übersicht.');
+      const undo = action === 'undo-payout';
+      await post(`/admin/members/${member.id}/payout${undo ? '/undo' : ''}`, {
+        week: selectedWeek, expectedPocket: member.pocket, expectedPaidPocket: member.payout.paidPocket,
+      });
+      await loadDashboard(); toast(undo ? 'Auszahlungsmarkierung zurückgenommen.' : 'Eigene Tasche als ausgezahlt markiert.');
+    }
     if (action === 'open-reset') { const scope = document.querySelector('#reset-scope').value; resetPaymentsModal(scope === 'all' ? null : scope); }
     if (action === 'restore-reset') restoreModal(button.dataset.id);
     if (action === 'copy-recovery') { await navigator.clipboard.writeText(document.querySelector('#recovery-code').value); toast('Wiederherstellungscode kopiert.'); }

@@ -95,6 +95,10 @@ export async function createDatabase({ url, sqlitePath = resolve('data/portal.sq
         id TEXT PRIMARY KEY, week_id TEXT NOT NULL REFERENCES weeks(id), member_id TEXT REFERENCES members(id),
         actor_id TEXT NOT NULL REFERENCES members(id), created_at TEXT NOT NULL,
         restored_at TEXT, restored_by TEXT REFERENCES members(id))`,
+      `CREATE TABLE IF NOT EXISTS payouts (
+        member_id TEXT NOT NULL REFERENCES members(id), week_id TEXT NOT NULL REFERENCES weeks(id),
+        pocket_amount BIGINT NOT NULL CHECK(pocket_amount >= 0), green_cents BIGINT NOT NULL CHECK(green_cents >= 0),
+        paid_at TEXT, paid_by TEXT REFERENCES members(id), PRIMARY KEY(member_id, week_id))`,
       'CREATE INDEX IF NOT EXISTS payments_week_idx ON payments(week_id, member_id)',
       'CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at)',
     ]) await tx.run(statement);

@@ -15,6 +15,17 @@ const publicMember = (m) => ({ id: m.id, name: m.name, role: m.role });
 const validPassword = (password) => typeof password === 'string' && password.length >= 10 && password.length <= 128;
 const validMoney = (amount) => Number.isSafeInteger(amount) && amount > 0 && amount <= 1_000_000_000;
 const greenMoney = (blackMoney) => Math.round(blackMoney * 70) / 100;
+// The paid snapshot survives later goal changes, approvals and payment resets.
+function payoutInfo(pocket, record) {
+  const paidPocket = Number(record?.pocket_amount || 0), paidGreenCents = Number(record?.green_cents || 0);
+  const remainingPocket = Math.max(0, pocket - paidPocket);
+  return {
+    status: record?.paid_at ? (remainingPocket > 0 ? 'partial' : 'paid') : (pocket > 0 ? 'open' : 'none'),
+    paidPocket, paidGreen: paidGreenCents / 100, remainingPocket,
+    remainingGreen: Math.max(0, Math.round(pocket * 70) - paidGreenCents) / 100,
+    paidAt: record?.paid_at || null, paidBy: record?.paid_by_name || null,
+  };
+}
 
 export function createApp({ db, adminSetupCode, production = false, clock = () => new Date(), disableRateLimit = false }) {
   if (production && (!adminSetupCode || adminSetupCode.length < 16)) throw new Error('ADMIN_SETUP_CODE muss mindestens 16 Zeichen lang sein.');
@@ -73,6 +84,8 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
   const audit = (tx, actor, action, details) => tx.run('INSERT INTO audit_log(id, actor_id, action, details, created_at) VALUES(?, ?, ?, ?, ?)',
     [randomUUID(), actor, action, JSON.stringify(details), clock().toISOString()]);
   const lockMember = (tx, id) => tx.get(`SELECT * FROM members WHERE id = ?${db.kind === 'postgres' ? ' FOR UPDATE' : ''}`, [id]);
+  const payoutsForWeek = (tx, week) => tx.all(`SELECT p.*, m.name AS paid_by_name FROM payouts p
+    LEFT JOIN members m ON m.id = p.paid_by WHERE p.week_id = ?`, [week]);
 
   app.get('/api/health', async (_req, res) => {
     await db.read((tx) => tx.get('SELECT 1 AS ok'));
@@ -168,12 +181,15 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
         LEFT JOIN members m ON m.id = pr.member_id LEFT JOIN payments p ON p.reset_id = pr.id
         WHERE pr.restored_at IS NULL GROUP BY pr.id, pr.week_id, pr.member_id, pr.actor_id, pr.created_at, pr.restored_at, pr.restored_by, m.name, a.name
         ORDER BY pr.created_at DESC, pr.id DESC`) : [];
-      return { week, members, payments, weeks, settings, activity, resets };
+      const payouts = await payoutsForWeek(tx, selected);
+      return { week, members, payments, weeks, settings, activity, resets, payouts };
     });
+    const payouts = new Map(data.payouts.map((payout) => [payout.member_id, payout]));
     const members = data.members.map((m) => {
       const accepted = Number(m.accepted), pending = Number(m.pending), pocket = Math.max(0, accepted - data.week.goal);
       return { ...publicMember(m), active: Boolean(m.active), registered: Boolean(m.registered_at), accepted, pending,
         removed: Boolean(m.removed_at), removedAt: m.removed_at,
+        payout: payoutInfo(pocket, payouts.get(m.id)),
         credited: Math.min(accepted, data.week.goal), pocket, greenPocket: greenMoney(pocket), remaining: Math.max(0, data.week.goal - accepted) };
     });
     // Personal notes are visible to their author and the two administrators.
@@ -238,6 +254,43 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
       await audit(tx, req.member.id, 'member_added', { memberId: member.id, name });
     });
     res.status(201).json({ member });
+  });
+  app.post('/api/admin/members/:id/payout', requireAuth, requireAdmin, async (req, res) => {
+    const { week, expectedPocket, expectedPaidPocket } = req.body;
+    if (!validWeek(week, clock())) fail(400, 'Ungültiger Wochenzeitraum.');
+    if (!Number.isSafeInteger(expectedPocket) || expectedPocket <= 0 || !Number.isSafeInteger(expectedPaidPocket) || expectedPaidPocket < 0) fail(400, 'Ungültiger Auszahlungsbetrag.');
+    await db.transaction(async (tx) => {
+      const member = await lockMember(tx, req.params.id);
+      if (!member) fail(404, 'Dieses Mitglied wurde nicht gefunden.');
+      await ensureWeeks(tx, clock());
+      const selected = await tx.get('SELECT goal FROM weeks WHERE id = ?', [week]);
+      const amounts = await tx.get(`SELECT COALESCE(SUM(amount), 0) AS accepted FROM payments
+        WHERE member_id = ? AND week_id = ? AND status = 'accepted' AND reset_id IS NULL`, [member.id, week]);
+      const pocket = Math.max(0, Number(amounts.accepted) - selected.goal);
+      const previous = await tx.get('SELECT * FROM payouts WHERE member_id = ? AND week_id = ?', [member.id, week]);
+      const payout = payoutInfo(pocket, previous);
+      if (pocket !== expectedPocket || payout.paidPocket !== expectedPaidPocket) fail(409, 'Der Betrag oder Auszahlungsstatus wurde geändert. Bitte aktualisiere die Übersicht.');
+      if (!payout.remainingPocket) fail(409, 'Für dieses Mitglied ist kein Betrag mehr offen.');
+      await tx.run(`INSERT INTO payouts(member_id, week_id, pocket_amount, green_cents, paid_at, paid_by) VALUES(?, ?, ?, ?, ?, ?)
+        ON CONFLICT(member_id, week_id) DO UPDATE SET pocket_amount = excluded.pocket_amount,
+        green_cents = excluded.green_cents, paid_at = excluded.paid_at, paid_by = excluded.paid_by`,
+      [member.id, week, pocket, Math.round(pocket * 70), clock().toISOString(), req.member.id]);
+      await audit(tx, req.member.id, 'pocket_paid', { memberId: member.id, name: member.name, week, pocketAmount: payout.remainingPocket, greenAmount: payout.remainingGreen });
+    });
+    res.json({ ok: true });
+  });
+  app.post('/api/admin/members/:id/payout/undo', requireAuth, requireAdmin, async (req, res) => {
+    const { week, expectedPaidPocket } = req.body;
+    if (!validWeek(week, clock()) || !Number.isSafeInteger(expectedPaidPocket) || expectedPaidPocket <= 0) fail(400, 'Ungültige Auszahlungsmarkierung.');
+    await db.transaction(async (tx) => {
+      const member = await lockMember(tx, req.params.id);
+      if (!member) fail(404, 'Dieses Mitglied wurde nicht gefunden.');
+      const payout = await tx.get('SELECT * FROM payouts WHERE member_id = ? AND week_id = ?', [member.id, week]);
+      if (!payout?.paid_at || Number(payout.pocket_amount) !== expectedPaidPocket) fail(409, 'Die Auszahlungsmarkierung wurde bereits geändert. Bitte aktualisiere die Übersicht.');
+      await tx.run('UPDATE payouts SET pocket_amount = 0, green_cents = 0, paid_at = NULL, paid_by = NULL WHERE member_id = ? AND week_id = ?', [member.id, week]);
+      await audit(tx, req.member.id, 'pocket_payment_undone', { memberId: member.id, name: member.name, week, pocketAmount: Number(payout.pocket_amount), greenAmount: Number(payout.green_cents) / 100 });
+    });
+    res.json({ ok: true });
   });
   app.post('/api/admin/members/:id/access', requireAuth, requireAdmin, async (req, res) => {
     const { active, confirmation } = req.body;
@@ -317,16 +370,19 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const result = await db.transaction(async (tx) => {
       await ensureWeeks(tx, clock());
       const week = await tx.get('SELECT * FROM weeks WHERE id = ?', [req.query.week]);
-      const rows = await tx.all(`SELECT m.name, COALESCE(SUM(CASE WHEN p.status = 'accepted' THEN p.amount ELSE 0 END), 0) AS accepted,
+      const rows = await tx.all(`SELECT m.id, m.name, COALESCE(SUM(CASE WHEN p.status = 'accepted' THEN p.amount ELSE 0 END), 0) AS accepted,
         COALESCE(SUM(CASE WHEN p.status = 'pending' THEN p.amount ELSE 0 END), 0) AS pending
         FROM members m LEFT JOIN payments p ON p.member_id = m.id AND p.week_id = ? AND p.reset_id IS NULL GROUP BY m.id, m.name ORDER BY m.name`, [week.id]);
-      return { week, rows };
+      return { week, rows, payouts: await payoutsForWeek(tx, week.id) };
     });
     const cell = (value) => `"${String(value).replaceAll('"', '""')}"`;
-    const rows = [['Woche ab', 'Mitglied', 'Wochenziel', 'Bestätigt', 'Abgabenkonto', 'Eigene Tasche (Schwarzgeld)', 'Offen', 'In Prüfung', 'Eigene Tasche (Grüngeld nach 30 % Abzug)'],
+    const payouts = new Map(result.payouts.map((payout) => [payout.member_id, payout]));
+    const payoutLabels = { none: 'Kein Überschuss', open: 'Offen', partial: 'Teilweise ausgezahlt', paid: 'Ausgezahlt' };
+    const rows = [['Woche ab', 'Mitglied', 'Wochenziel', 'Bestätigt', 'Abgabenkonto', 'Eigene Tasche (Schwarzgeld)', 'Offen', 'In Prüfung', 'Eigene Tasche (Grüngeld nach 30 % Abzug)', 'Auszahlungsstatus', 'Ausgezahlt (Grüngeld)', 'Noch offen (Grüngeld)', 'Markiert am', 'Markiert von'],
       ...result.rows.map((r) => {
         const pocket = Math.max(0, Number(r.accepted) - result.week.goal);
-        return [result.week.id, r.name, result.week.goal, r.accepted, Math.min(Number(r.accepted), result.week.goal), pocket, Math.max(0, result.week.goal - Number(r.accepted)), r.pending, greenMoney(pocket).toFixed(2).replace('.', ',')];
+        const payout = payoutInfo(pocket, payouts.get(r.id));
+        return [result.week.id, r.name, result.week.goal, r.accepted, Math.min(Number(r.accepted), result.week.goal), pocket, Math.max(0, result.week.goal - Number(r.accepted)), r.pending, greenMoney(pocket).toFixed(2).replace('.', ','), payoutLabels[payout.status], payout.paidGreen.toFixed(2).replace('.', ','), payout.remainingGreen.toFixed(2).replace('.', ','), payout.paidAt || '', payout.paidBy || ''];
       })];
     res.type('text/csv').attachment(`abgaben-${result.week.id}.csv`).send('\uFEFF' + rows.map((r) => r.map(cell).join(';')).join('\r\n'));
   });
