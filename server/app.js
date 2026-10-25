@@ -171,7 +171,11 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
       const payments = await tx.all(`SELECT p.*, m.name AS member_name, r.name AS recipient_name, reviewer.name AS reviewer_name
         FROM payments p JOIN members m ON m.id = p.member_id JOIN members r ON r.id = p.recipient_id
         LEFT JOIN members reviewer ON reviewer.id = p.reviewed_by WHERE p.week_id = ? AND p.reset_id IS NULL ORDER BY p.created_at DESC, p.id DESC`, [selected]);
-      const weeks = await tx.all('SELECT * FROM weeks ORDER BY id DESC');
+      const weeks = await tx.all(`SELECT w.id, w.goal, COUNT(p.id) AS entry_count,
+        COALESCE(SUM(CASE WHEN p.status = 'accepted' THEN p.amount ELSE 0 END), 0) AS total_accepted,
+        COALESCE(SUM(CASE WHEN p.status = 'pending' THEN 1 ELSE 0 END), 0) AS pending_count
+        FROM weeks w LEFT JOIN payments p ON p.week_id = w.id AND p.reset_id IS NULL
+        GROUP BY w.id, w.goal ORDER BY w.id DESC`);
       const settings = await tx.get('SELECT * FROM settings WHERE id = 1');
       const activity = await tx.all(`SELECT a.*, m.name AS actor_name FROM audit_log a JOIN members m ON m.id = a.actor_id
         ORDER BY a.created_at DESC, a.id DESC LIMIT 30`);
@@ -196,7 +200,9 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const payments = data.payments.map((p) => ({ ...p, note: req.member.role === 'admin' || p.member_id === req.member.id ? p.note : '', review_note: req.member.role === 'admin' || p.member_id === req.member.id ? p.review_note : '' }));
     res.json({ user: req.member, csrf: req.session.csrf_token, timeZone: TIME_ZONE, now: now.toISOString(), activeWeek,
       week: { id: data.week.id, end: addDays(data.week.id, 7), goal: data.week.goal, canSubmit: selected === activeWeek && activeWeek >= FIRST_WEEK },
-      weeks: data.weeks, defaultGoal: data.settings.weekly_goal, members, payments,
+      weeks: data.weeks.map((week) => ({ id: week.id, goal: week.goal, entryCount: Number(week.entry_count),
+        totalAccepted: Number(week.total_accepted), pendingCount: Number(week.pending_count) })),
+      defaultGoal: data.settings.weekly_goal, members, payments,
       resets: data.resets.map((reset) => ({ ...reset, payment_count: Number(reset.payment_count), total: Number(reset.total) })),
       activity: req.member.role === 'admin' ? data.activity.map((item) => ({ ...item, details: JSON.parse(item.details) })) : [],
     });

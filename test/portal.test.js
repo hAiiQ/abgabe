@@ -194,6 +194,12 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
     // Before the new week has been created, the public page uses the configured default.
     assert.deepEqual((await outsider.call('/public-settings')).data, { week: '2026-10-26', weeklyGoal: 300000 });
     let state = await zak.dashboard(); assert.equal(state.week.id, '2026-10-26'); assert.equal(state.week.goal, 300000);
+    assert.deepEqual(state.weeks.find((week) => week.id === '2026-10-19'), {
+      id: '2026-10-19', goal: 400000, entryCount: 5, totalAccepted: 700001, pendingCount: 1,
+    });
+    assert.deepEqual(state.weeks.find((week) => week.id === '2026-10-26'), {
+      id: '2026-10-26', goal: 300000, entryCount: 0, totalAccepted: 0, pendingCount: 0,
+    });
     // Editing the previous week's default does not replace the running week's own goal.
     await michael.call('/admin/settings', { week: '2026-10-19', goal: 400000, applyDefault: true });
     assert.equal((await outsider.call('/public-settings')).data.weeklyGoal, 300000);
@@ -205,6 +211,8 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
     const oldPending = state.payments.find((p) => p.status === 'pending');
     assert.equal((await herbert.call(`/payments/${oldPending.id}/review`, { decision: 'accepted' })).status, 200);
     assert.equal((await luana.dashboard('2026-10-19')).members.find((m) => m.name === 'Luana Velaris').credited, 100000);
+    const archivedWeek = (await michael.dashboard()).weeks.find((week) => week.id === '2026-10-19');
+    assert.equal(archivedWeek.totalAccepted, 800001); assert.equal(archivedWeek.pendingCount, 0);
     assert.equal((await luana.dashboard()).members.find((m) => m.name === 'Luana Velaris').credited, 0);
     assert.equal((await zak.dashboard('2026-11-02').catch(() => 'invalid')), 'invalid');
   });

@@ -1,6 +1,8 @@
 const root = document.querySelector('#app');
 const modal = document.querySelector('#modal');
-let user = null, csrf = null, data = null, page = 'overview', authMode = 'login', memberSearch = '', memberFilter = 'all', selectedWeek = null;
+const initialParams = new URLSearchParams(window.location.search);
+let user = null, csrf = null, data = null, page = ['overview','history','archive','reviews','settings'].includes(initialParams.get('view')) ? initialParams.get('view') : 'overview', authMode = 'login', memberSearch = '', memberFilter = 'all', selectedWeek = initialParams.get('week') || null;
+let weekPinned = selectedWeek !== null;
 let toastTimer, refreshing = false, adminTab = 'members';
 let authWeeklyGoal = null;
 
@@ -91,13 +93,22 @@ function renderAuth() {
   loadPublicGoal().catch(() => { /* Keep the last known goal during temporary network failures. */ });
 }
 
+function syncLocation() {
+  const url = new URL(window.location.href);
+  if (weekPinned && selectedWeek) url.searchParams.set('week', selectedWeek); else url.searchParams.delete('week');
+  if (page === 'overview') url.searchParams.delete('view'); else url.searchParams.set('view', page);
+  window.history.replaceState(null, '', url);
+}
+
 async function loadDashboard({ quiet = false } = {}) {
   if (refreshing) return;
   refreshing = true;
   try {
-    const requestedWeek = quiet && data && selectedWeek === data.activeWeek ? null : selectedWeek;
+    const requestedWeek = quiet && !weekPinned && data && selectedWeek === data.activeWeek ? null : selectedWeek;
     data = await api(`/dashboard${requestedWeek ? `?week=${encodeURIComponent(requestedWeek)}` : ''}`);
     user = data.user; csrf = data.csrf; selectedWeek = data.week.id;
+    if (!admin() && ['reviews','settings'].includes(page)) page = 'overview';
+    syncLocation();
     // Preserve an open form while background refreshes update underlying records.
     if (!quiet || !modal.open) renderPortal();
   } finally { refreshing = false; }
@@ -108,19 +119,26 @@ function renderPortal() {
   root.innerHTML = `<div class="portal-shell"><header class="header">${brand()}<nav class="nav" aria-label="Hauptnavigation">
       <button data-page="overview" class="${page === 'overview' ? 'active' : ''}">Übersicht</button>
       <button data-page="history" class="${page === 'history' ? 'active' : ''}">Abgabenverlauf</button>
+      <button data-page="archive" class="${page === 'archive' ? 'active' : ''}">Wochenarchiv</button>
       ${admin() ? `<button data-page="reviews" class="${page === 'reviews' ? 'active' : ''}">Freigaben ${pendingCount ? `<span class="count">${pendingCount}</span>` : ''}</button><button data-page="settings" class="${page === 'settings' ? 'active' : ''}">Verwaltung</button>` : ''}
     </nav><div class="header-right"><button class="user-button" data-action="account" aria-label="Konto von ${esc(user.name)} öffnen">${avatar(user.name)}<span><strong>${esc(user.name)}</strong><small>${admin() ? 'Administrator' : 'Mitglied'}</small></span></button><button class="icon-button" data-action="logout" title="Abmelden" aria-label="Abmelden">${icon('logout')}</button></div></header>
-    <main id="main" class="main">${pageTop()}${data.activeWeek < '2026-10-19' ? `<div class="banner">${icon('calendar')} Die erste Abgabenwoche startet am Montag, 19. Oktober 2026, um 00:00 Uhr. Bis dahin kannst du dein Konto einrichten.</div>` : selectedWeek !== data.activeWeek ? `<div class="banner">${icon('clock')} Du siehst eine abgeschlossene Woche. Offene Einträge können weiterhin von den Admins bestätigt werden.</div>` : ''}
-      ${page === 'overview' ? overview() : page === 'history' ? history() : page === 'reviews' && admin() ? reviews() : page === 'settings' && admin() ? settings() : overview()}
+    <main id="main" class="main">${pageTop()}${data.activeWeek < '2026-10-19' ? `<div class="banner">${icon('calendar')} Die erste Abgabenwoche startet am Montag, 19. Oktober 2026, um 00:00 Uhr. Bis dahin kannst du dein Konto einrichten.</div>` : page !== 'archive' && selectedWeek !== data.activeWeek ? `<div class="banner">${icon('clock')} Du siehst eine abgeschlossene Woche. Offene Einträge können weiterhin von den Admins bestätigt werden.</div>` : ''}
+      ${page === 'overview' ? overview() : page === 'history' ? history() : page === 'archive' ? weekArchive() : page === 'reviews' && admin() ? reviews() : page === 'settings' && admin() ? settings() : overview()}
       <p class="help-callout">${icon('lock')} Nur bestätigte Beträge zählen. Jede Woche beginnt montags um 00:00 Uhr und endet am folgenden Montag um 00:00 Uhr.</p>
     </main>${footer()}</div>`;
 }
 
 function pageTop() {
-  const titles = { overview: ['DEIN WOCHENÜBERBLICK', 'Eine Woche. Alles im Blick.', 'Jede Abgabe zählt. Und du weißt genau, was für dich bleibt.'], history: ['ALLES NACHVOLLZIEHBAR', 'Deine Abgaben im Verlauf.', 'Alle Einträge der gewählten Woche und ihr aktueller Status.'], reviews: ['GEMEINSAM VERWALTEN', 'Eintragen. Prüfen. Bestätigen.', 'Hier warten die Abgaben der gewählten Woche auf deine Freigabe.'], settings: ['DIE RICHTIGEN EINSTELLUNGEN', 'Ein klarer Rahmen fürs Team.', 'Mitglieder freigeben, Wochenziele festlegen und Abgaben verwalten.'] };
+  const titles = { overview: ['DEIN WOCHENÜBERBLICK', 'Eine Woche. Alles im Blick.', 'Jede Abgabe zählt. Und du weißt genau, was für dich bleibt.'], archive: ['GESPEICHERTE WOCHEN', 'Alte Wochenabgaben.', 'Öffne frühere Abgaben, Wochenübersichten und Auszahlungsstände.'], history: ['ALLES NACHVOLLZIEHBAR', 'Deine Abgaben im Verlauf.', 'Alle Einträge der gewählten Woche und ihr aktueller Status.'], reviews: ['GEMEINSAM VERWALTEN', 'Eintragen. Prüfen. Bestätigen.', 'Hier warten die Abgaben der gewählten Woche auf deine Freigabe.'], settings: ['DIE RICHTIGEN EINSTELLUNGEN', 'Ein klarer Rahmen fürs Team.', 'Mitglieder freigeben, Wochenziele festlegen und Abgaben verwalten.'] };
   const [eyebrow, title, subtitle] = titles[page] || titles.overview;
   const index = data.weeks.findIndex((w) => w.id === selectedWeek);
-  return `<div class="page-top"><div class="page-title"><div class="eyebrow"><span class="status-dot"></span> ${eyebrow}</div><h1>${title}</h1><p>${subtitle}</p></div><div class="week-controls"><button class="icon-button" data-action="week-prev" aria-label="Vorherige Woche" ${index === data.weeks.length - 1 ? 'disabled' : ''}>${icon('left')}</button><label class="week-select">${icon('calendar')}<select id="week-select" aria-label="Abgabenwoche">${data.weeks.map((w) => `<option value="${w.id}" ${w.id === selectedWeek ? 'selected' : ''}>${weekLabel(w.id)}</option>`).join('')}</select></label><button class="icon-button" data-action="week-next" aria-label="Nächste Woche" ${index === 0 ? 'disabled' : ''}>${icon('chevron')}</button></div></div>`;
+  return `<div class="page-top"><div class="page-title"><div class="eyebrow"><span class="status-dot"></span> ${eyebrow}</div><h1>${title}</h1><p>${subtitle}</p></div><div class="week-navigation">${page === 'archive' ? `<button class="btn btn-secondary btn-sm" data-action="week-current">${icon('calendar')} Aktuelle Woche</button>` : `<div class="week-controls"><button class="icon-button" data-action="week-prev" aria-label="Vorherige Woche" ${index === data.weeks.length - 1 ? 'disabled' : ''}>${icon('left')}</button><label class="week-select">${icon('calendar')}<select id="week-select" aria-label="Abgabenwoche">${data.weeks.map((w) => `<option value="${w.id}" ${w.id === selectedWeek ? 'selected' : ''}>${weekLabel(w.id)}</option>`).join('')}</select></label><button class="icon-button" data-action="week-next" aria-label="Nächste Woche" ${index === 0 ? 'disabled' : ''}>${icon('chevron')}</button></div>${selectedWeek < data.activeWeek ? `<button class="text-button current-week-link" data-action="week-current">Zur aktuellen Woche ${icon('arrow')}</button>` : ''}`}</div></div>`;
+}
+function weekArchive() {
+  return `<section class="panel"><div class="panel-header"><div><div class="panel-title">${icon('calendar')}<h2>Gespeicherte Abgabenwochen</h2><small>${data.weeks.length}</small></div><p class="panel-subtitle">Alle seit dem 19.10.2026 gespeicherten Wochen. Auszahlungen bleiben der jeweiligen Woche zugeordnet.</p></div></div><div class="week-archive-grid">${data.weeks.map((week) => {
+    const current = week.id === data.activeWeek, past = week.id < data.activeWeek;
+    return `<article class="week-archive-card ${week.id === selectedWeek ? 'selected-week' : ''}"><header><h3>${weekLabel(week.id)}</h3><span class="badge ${current ? 'accepted' : past ? 'open' : 'pending'}">${current ? 'Laufend' : past ? 'Abgeschlossen' : 'Startet demnächst'}</span></header><dl class="archive-figures"><div><dt>Wochenziel pro Person</dt><dd>${money(week.goal)}</dd></div><div><dt>Bestätigt · Schwarzgeld gesamt</dt><dd>${money(week.totalAccepted)}</dd></div><div><dt>Abgabeneinträge</dt><dd>${number(week.entryCount)}${week.pendingCount ? `<small>${week.pendingCount} in Prüfung</small>` : ''}</dd></div></dl><div class="archive-actions"><a class="btn btn-primary btn-sm" href="/?week=${week.id}&view=history">Abgaben ansehen ${icon('arrow')}</a><a class="btn btn-secondary btn-sm" href="/?week=${week.id}">Wochenübersicht</a>${admin() ? `<a class="icon-button" href="/api/export?week=${week.id}" download aria-label="CSV für die Woche ab ${dateLabel(week.id, { year: 'numeric' })} herunterladen">${icon('download')}</a>` : ''}</div></article>`;
+  }).join('')}</div></section>`;
 }
 function statCard(label, value, hint, symbol, currency = true, extraClass = '') {
   return `<div class="stat-card${extraClass ? ` ${extraClass}` : ''}"><div class="stat-head"><span>${label}</span>${icon(symbol)}</div><div class="stat-value">${value}${currency ? '<span class="currency">$</span>' : ''}</div><p class="stat-foot">${hint}</p></div>`;
@@ -261,7 +279,7 @@ document.addEventListener('click', async (event) => {
   if (!button || button.disabled) return;
   try {
     if (button.dataset.adminTab) { adminTab = button.dataset.adminTab; renderPortal(); return; }
-    if (button.dataset.page) { page = button.dataset.page; if (button.dataset.adminSection) adminTab = button.dataset.adminSection; memberSearch = ''; renderPortal(); return; }
+    if (button.dataset.page) { page = button.dataset.page; if (button.dataset.adminSection) adminTab = button.dataset.adminSection; memberSearch = ''; syncLocation(); renderPortal(); return; }
     if (button.dataset.filter) { memberFilter = button.dataset.filter; renderPortal(); return; }
     const action = button.dataset.action;
     if (action === 'auth-login' || action === 'auth-register') { authMode = action === 'auth-login' ? 'login' : 'register'; renderAuth(); }
@@ -285,10 +303,11 @@ document.addEventListener('click', async (event) => {
     if (action === 'restore-reset') restoreModal(button.dataset.id);
     if (action === 'copy-recovery') { await navigator.clipboard.writeText(document.querySelector('#recovery-code').value); toast('Wiederherstellungscode kopiert.'); }
     if (action === 'accept' || action === 'reject') reviewModal(button.dataset.id, action === 'accept' ? 'accepted' : 'rejected');
-    if (action === 'logout') { button.disabled = true; await post('/auth/logout', {}); user = null; csrf = null; data = null; page = 'overview'; selectedWeek = null; modal.close(); renderAuth(); toast('Du bist abgemeldet.'); }
+    if (action === 'logout') { button.disabled = true; await post('/auth/logout', {}); user = null; csrf = null; data = null; page = 'overview'; selectedWeek = null; weekPinned = false; syncLocation(); modal.close(); renderAuth(); toast('Du bist abgemeldet.'); }
+    if (action === 'week-current') { selectedWeek = null; weekPinned = false; memberSearch = ''; if (page === 'archive') page = 'overview'; await loadDashboard(); }
     if (action === 'week-prev' || action === 'week-next') {
       const index = data.weeks.findIndex((w) => w.id === selectedWeek), week = data.weeks[index + (action === 'week-prev' ? 1 : -1)];
-      if (week) { selectedWeek = week.id; await loadDashboard(); }
+      if (week) { selectedWeek = week.id; weekPinned = true; await loadDashboard(); }
     }
   } catch (error) { button.disabled = false; toast(error.message, true); }
 });
@@ -307,7 +326,7 @@ document.addEventListener('input', (event) => {
   }
 });
 document.addEventListener('change', async (event) => {
-  if (event.target.id === 'week-select') { selectedWeek = event.target.value; try { await loadDashboard(); } catch (error) { toast(error.message, true); } }
+  if (event.target.id === 'week-select') { selectedWeek = event.target.value; weekPinned = true; try { await loadDashboard(); } catch (error) { toast(error.message, true); } }
   if (event.target.matches('.member-action')) {
     const action = event.target.value, id = event.target.dataset.member;
     event.target.value = '';

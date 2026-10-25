@@ -80,6 +80,12 @@ In der Wochenübersicht zeigt **Gesamtbetrag** die Summe aller bestätigten Abga
 
 Die eigene Tasche wird pro Person zusätzlich als **Grüngeld nach 30 % Abzug** ausgewiesen: 100.000 $ Schwarzgeld entsprechen 70.000 $ Grüngeld. Die Berechnung verwendet nur den bestätigten Überschuss über dem Wochenziel und wird bei Zieländerungen neu berechnet. Die zusätzliche Anzeige steht in der Mitgliederliste, im persönlichen Konto und im CSV-Export. Bei Bruchteilen werden zwei Nachkommastellen angezeigt; der CSV-Export verwendet ein deutsches Dezimalkomma. Der Gesamtbetrag summiert weiterhin die ursprünglichen Schwarzgeldbeträge.
 
+### Zugriff auf alte Wochenabgaben
+
+Unter **Wochenarchiv** stehen alle gespeicherten Wochen seit dem 19.10.2026, einschließlich der laufenden Woche. Jede Woche zeigt ihr eigenes Ziel, bestätigte Schwarzgeldbeträge und die Anzahl der Abgabeneinträge. **Abgaben ansehen** öffnet den Verlauf; **Wochenübersicht** zeigt Mitgliederbeträge, Grüngeld und Auszahlungsmarkierungen dieser Woche. Admins können die jeweilige Woche zusätzlich als CSV herunterladen und offene Einträge weiterhin bearbeiten.
+
+Die gewählte Woche steht in der Seitenadresse und bleibt dadurch nach Neuladen oder erneutem Anmelden ausgewählt. Mit **Zur aktuellen Woche** wird wieder die laufende Woche geöffnet. Daten älterer Wochen bleiben beim automatischen Wochenwechsel gespeichert. Neue Abgaben sind weiterhin nur in der laufenden Woche möglich.
+
 ### Eigene Tasche als ausgezahlt markieren
 
 Michael und Herbert sehen in der Mitgliederübersicht pro Person die Spalte **Auszahlung**. Mit **Ausgezahlt** wird der aktuell offene Betrag der eigenen Tasche für die ausgewählte Woche als ausgezahlt markiert. Der Status mit Grüngeldbetrag, Datum und Administrator ist auch für Mitglieder sichtbar und wird im persönlichen Konto sowie im CSV-Export angezeigt. Abgaben- und Taschenbeträge bleiben als Wochenübersicht erhalten.
