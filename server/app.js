@@ -45,7 +45,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const rawCookie = req.headers.cookie?.split(';').map((v) => v.trim()).find((v) => v.startsWith('abgabe_session='))?.slice(15);
     if (rawCookie && /^[a-f0-9]{64}$/.test(rawCookie)) {
       const session = await db.read((tx) => tx.get(`SELECT s.*, m.name, m.role FROM sessions s JOIN members m ON m.id = s.member_id
-        WHERE s.token_hash = ? AND s.expires_at > ? AND m.active = 1`, [tokenHash(rawCookie), clock().toISOString()]));
+        WHERE s.token_hash = ? AND s.expires_at > ? AND m.active = 1 AND m.removed_at IS NULL`, [tokenHash(rawCookie), clock().toISOString()]));
       if (session) {
         req.member = { id: session.member_id, name: session.name, role: session.role };
         req.session = session;
@@ -90,6 +90,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     if (!validPassword(password)) fail(400, 'Dein Passwort muss 10 bis 128 Zeichen lang sein.');
     const member = await db.read((tx) => tx.get('SELECT * FROM members WHERE normalized_name = ?', [normalizeName(name)]));
     if (!member) fail(400, 'Dieser Name steht nicht auf der Mitgliederliste. Bitte Vor- und Nachnamen prüfen.');
+    if (member.removed_at) fail(403, 'Dieses Mitglied wurde aus der Mitgliederliste entfernt. Bitte Michael oder Herbert kontaktieren.');
     if (!member.active) fail(403, 'Dieses Mitgliedskonto ist gesperrt. Bitte Michael oder Herbert kontaktieren.');
     if (member.password_hash) fail(409, 'Dieser Name ist bereits registriert. Bitte melde dich an.');
     if (member.reset_token_hash && !safeEqual(tokenHash(String(recoveryCode || '').trim()), member.reset_token_hash)) fail(403, 'Dieses Konto wurde zurückgesetzt. Bitte gib den Wiederherstellungscode deines Admins ein.');
@@ -97,9 +98,9 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const hash = await hashPassword(password);
     const session = await db.transaction(async (tx) => {
       const current = await lockMember(tx, member.id);
-      if (!current?.active || current.password_hash || current.reset_token_hash !== member.reset_token_hash) fail(409, 'Dieser Zugang wurde zwischenzeitlich geändert. Bitte erneut versuchen.');
+      if (!current?.active || current.removed_at || current.password_hash || current.reset_token_hash !== member.reset_token_hash) fail(409, 'Dieser Zugang wurde zwischenzeitlich geändert. Bitte erneut versuchen.');
       const result = await tx.run(`UPDATE members SET password_hash = ?, registered_at = ?, reset_token_hash = NULL
-        WHERE id = ? AND password_hash IS NULL AND active = 1
+        WHERE id = ? AND password_hash IS NULL AND active = 1 AND removed_at IS NULL
         AND (reset_token_hash = ? OR (reset_token_hash IS NULL AND CAST(? AS TEXT) IS NULL))`,
       [hash, clock().toISOString(), member.id, member.reset_token_hash, member.reset_token_hash]);
       if (result.rowCount !== 1) fail(409, 'Dieser Name ist bereits registriert. Bitte melde dich an.');
@@ -113,10 +114,10 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     if (typeof password !== 'string' || password.length > 128) fail(400, 'Bitte Name und Passwort eingeben.');
     const member = await db.read((tx) => tx.get('SELECT * FROM members WHERE normalized_name = ?', [normalizeName(name)]));
     const passwordMatches = await verifyPassword(password, member?.password_hash);
-    if (!passwordMatches || !member?.active) fail(401, 'Name oder Passwort stimmt nicht oder der Zugang ist gesperrt. Nur freigegebene Mitglieder können sich anmelden.');
+    if (!passwordMatches || !member?.active || member.removed_at) fail(401, 'Name oder Passwort stimmt nicht oder der Zugang ist gesperrt. Nur freigegebene Mitglieder können sich anmelden.');
     const session = await db.transaction(async (tx) => {
       const unchanged = await lockMember(tx, member.id);
-      if (!unchanged?.active || unchanged.password_hash !== member.password_hash) fail(401, 'Dein Zugang wurde zwischenzeitlich geändert. Bitte erneut anmelden.');
+      if (!unchanged?.active || unchanged.removed_at || unchanged.password_hash !== member.password_hash) fail(401, 'Dein Zugang wurde zwischenzeitlich geändert. Bitte erneut anmelden.');
       return createSession(tx, member.id);
     });
     setSessionCookie(res, session.token);
@@ -134,7 +135,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const hash = await hashPassword(req.body.password);
     await db.transaction(async (tx) => {
       await lockMember(tx, req.member.id);
-      const changed = await tx.run('UPDATE members SET password_hash = ? WHERE id = ? AND password_hash = ? AND active = 1', [hash, req.member.id, member.password_hash]);
+      const changed = await tx.run('UPDATE members SET password_hash = ? WHERE id = ? AND password_hash = ? AND active = 1 AND removed_at IS NULL', [hash, req.member.id, member.password_hash]);
       if (changed.rowCount !== 1) fail(409, 'Dein Zugang wurde zwischenzeitlich geändert. Bitte erneut anmelden.');
       await tx.run('DELETE FROM sessions WHERE member_id = ? AND token_hash <> ?', [req.member.id, req.session.token_hash]);
       await audit(tx, req.member.id, 'password_changed', {});
@@ -148,11 +149,11 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const data = await db.transaction(async (tx) => {
       await ensureWeeks(tx, now);
       const week = await tx.get('SELECT * FROM weeks WHERE id = ?', [selected]);
-      const members = await tx.all(`SELECT m.id, m.name, m.role, m.registered_at, m.active,
+      const members = await tx.all(`SELECT m.id, m.name, m.role, m.registered_at, m.active, m.removed_at,
         COALESCE(SUM(CASE WHEN p.status = 'accepted' THEN p.amount ELSE 0 END), 0) AS accepted,
         COALESCE(SUM(CASE WHEN p.status = 'pending' THEN p.amount ELSE 0 END), 0) AS pending
         FROM members m LEFT JOIN payments p ON p.member_id = m.id AND p.week_id = ? AND p.reset_id IS NULL
-        GROUP BY m.id, m.name, m.role, m.registered_at, m.active ORDER BY m.name`, [selected]);
+        GROUP BY m.id, m.name, m.role, m.registered_at, m.active, m.removed_at ORDER BY m.name`, [selected]);
       const payments = await tx.all(`SELECT p.*, m.name AS member_name, r.name AS recipient_name, reviewer.name AS reviewer_name
         FROM payments p JOIN members m ON m.id = p.member_id JOIN members r ON r.id = p.recipient_id
         LEFT JOIN members reviewer ON reviewer.id = p.reviewed_by WHERE p.week_id = ? AND p.reset_id IS NULL ORDER BY p.created_at DESC, p.id DESC`, [selected]);
@@ -171,6 +172,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const members = data.members.map((m) => {
       const accepted = Number(m.accepted), pending = Number(m.pending);
       return { ...publicMember(m), active: Boolean(m.active), registered: Boolean(m.registered_at), accepted, pending,
+        removed: Boolean(m.removed_at), removedAt: m.removed_at,
         credited: Math.min(accepted, data.week.goal), pocket: Math.max(0, accepted - data.week.goal), remaining: Math.max(0, data.week.goal - accepted) };
     });
     // Personal notes are visible to their author and the two administrators.
@@ -188,6 +190,8 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     if (week !== currentWeek(clock()) || week < FIRST_WEEK) fail(400, 'Abgaben können nur in der laufenden Woche eingetragen werden.');
     if (typeof note !== 'string' || note.length > 300) fail(400, 'Die Notiz darf höchstens 300 Zeichen haben.');
     await db.transaction(async (tx) => {
+      const author = await lockMember(tx, req.member.id);
+      if (!author?.active || author.removed_at) fail(401, 'Dein Zugang wurde zwischenzeitlich geändert. Bitte erneut anmelden.');
       const recipient = await tx.get("SELECT id FROM members WHERE id = ? AND role = 'admin' AND active = 1", [recipientId || '']);
       if (!recipient) fail(400, 'Bitte Michael Black oder Herbert Petersen als Empfänger wählen.');
       await ensureWeeks(tx, clock());
@@ -240,6 +244,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     await db.transaction(async (tx) => {
       const member = await lockMember(tx, req.params.id);
       if (!member) fail(404, 'Dieses Mitglied wurde nicht gefunden.');
+      if (member.removed_at) fail(409, 'Stelle das entfernte Mitglied zuerst wieder her.');
       if (member.role === 'admin') fail(403, 'Die beiden festen Adminkonten können nicht gesperrt werden.');
       if (Boolean(member.active) === active) fail(409, 'Der Zugang hat diesen Status bereits.');
       await tx.run('UPDATE members SET active = ? WHERE id = ?', [active ? 1 : 0, member.id]);
@@ -248,6 +253,21 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     });
     res.json({ ok: true });
   });
+  for (const restore of [false, true]) {
+    app.post(`/api/admin/members/:id/${restore ? 'restore' : 'remove'}`, requireAuth, requireAdmin, async (req, res) => {
+      if (req.body.confirmation !== (restore ? 'WIEDERHERSTELLEN' : 'ENTFERNEN')) fail(400, 'Bitte die Mitgliederänderung bestätigen.');
+      await db.transaction(async (tx) => {
+        const member = await lockMember(tx, req.params.id);
+        if (!member) fail(404, 'Dieses Mitglied wurde nicht gefunden.');
+        if (member.role === 'admin') fail(403, 'Die beiden festen Adminkonten können nicht entfernt werden.');
+        if (Boolean(member.removed_at) !== restore) fail(409, restore ? 'Dieses Mitglied ist nicht entfernt.' : 'Dieses Mitglied wurde bereits entfernt.');
+        await tx.run('UPDATE members SET removed_at = ? WHERE id = ?', [restore ? null : clock().toISOString(), member.id]);
+        await tx.run('DELETE FROM sessions WHERE member_id = ?', [member.id]);
+        await audit(tx, req.member.id, restore ? 'member_restored' : 'member_removed', { memberId: member.id, name: member.name });
+      });
+      res.json({ ok: true });
+    });
+  }
   app.post('/api/admin/members/:id/reset-access', requireAuth, requireAdmin, async (req, res) => {
     if (req.body.confirmation !== 'ZURÜCKSETZEN') fail(400, 'Bitte den Zugang-Reset ausdrücklich bestätigen.');
     if (req.params.id === req.member.id) fail(400, 'Dein eigenes Passwort kannst du über dein Profil ändern.');
@@ -255,6 +275,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     await db.transaction(async (tx) => {
       const member = await lockMember(tx, req.params.id);
       if (!member) fail(404, 'Dieses Mitglied wurde nicht gefunden.');
+      if (member.removed_at) fail(409, 'Stelle das entfernte Mitglied zuerst wieder her.');
       await tx.run('UPDATE members SET password_hash = NULL, registered_at = NULL, reset_token_hash = ? WHERE id = ?', [tokenHash(recoveryCode), member.id]);
       await tx.run('DELETE FROM sessions WHERE member_id = ?', [member.id]);
       await audit(tx, req.member.id, 'member_access_reset', { memberId: member.id, name: member.name });

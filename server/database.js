@@ -102,6 +102,7 @@ export async function createDatabase({ url, sqlitePath = resolve('data/portal.sq
     for (const [table, column, declaration] of [
       ['members', 'active', 'INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))'],
       ['members', 'reset_token_hash', 'TEXT'],
+      ['members', 'removed_at', 'TEXT'],
       ['payments', 'reset_id', 'TEXT REFERENCES payment_resets(id)'],
     ]) {
       const columns = pool

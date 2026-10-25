@@ -128,6 +128,12 @@ Michael und Herbert sehen unter **Verwaltung** drei Bereiche:
 
 „Zugang sperren“ verweigert Anmeldung und Registrierung und beendet alle bestehenden Sitzungen. Abgabeneinträge und Historie bleiben erhalten. „Zugang freigeben“ hebt die Sperre wieder auf. Die beiden festen Adminkonten können nicht gesperrt werden. Eine Zugangssperre ändert ausschließlich den Portalzugriff, nicht die Wochenpflicht oder bisherige Kontoberechnungen.
 
+### Mitglied entfernen oder wiederherstellen
+
+Unter **Verwaltung → Mitglieder → Aktion wählen → Mitglied entfernen** können Michael und Herbert normale Mitglieder aus der aktiven Liste nehmen. Nach Bestätigung endet der Zugang sofort; bestehende Sitzungen werden beendet. Die Person kann sich auch mit ihrem bisherigen Passwort nicht mehr anmelden oder neu registrieren. Die beiden festen Adminkonten sind geschützt.
+
+Abgaben, Bestätigungen, Summen und CSV-Exporte bleiben erhalten. Entfernte Personen zählen nicht mehr zur aktiven Mitgliederübersicht und zum Ziel des aktuellen Teams. Unter **Entfernte Mitglieder → Mitglied wiederherstellen** wird dasselbe Konto mit seiner Historie zurückgeholt. Eine vorher bestehende Zugangssperre bleibt bestehen. Eine entfernte Person wird bei Neustarts nicht erneut automatisch angelegt.
+
 ### Passwort vergessen / Zugang zurücksetzen
 
 Der Admin wählt bei der betroffenen Person **Zugang zurücksetzen** und bestätigt mit `ZURÜCKSETZEN`. Das bisherige Passwort und alle Sitzungen werden ungültig. Der Admin erhält einen **einmaligen Wiederherstellungscode**, der nur in diesem Dialog angezeigt und nicht im Änderungsprotokoll gespeichert wird. Er gibt ihn der betroffenen Person persönlich weiter.
