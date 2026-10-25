@@ -132,7 +132,7 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
     const result = await Promise.all([michael.call(`/payments/${paymentId}/review`, { decision: 'accepted' }), herbert.call(`/payments/${paymentId}/review`, { decision: 'accepted' })]);
     assert.deepEqual(result.map((r) => r.status).sort(), [200, 409]);
     const m = (await zak.dashboard()).members.find((m) => m.id === zakId);
-    assert.equal(m.accepted, 200000); assert.equal(m.credited, 200000); assert.equal(m.pocket, 0); assert.equal(m.pending, 0);
+    assert.equal(m.accepted, 200000); assert.equal(m.credited, 200000); assert.equal(m.pocket, 0); assert.equal(m.greenPocket, 0); assert.equal(m.pending, 0);
   });
   await t.test('Mehrere Abgaben addieren sich; Überschuss gehört in die eigene Tasche', async () => {
     await zak.call('/payments', { amount: 150000, week: '2026-10-19', recipientId: herbertId });
@@ -140,21 +140,39 @@ test('Portal: echte HTTP-Sitzungen, Rollen, Freigaben und Kontoberechnung', asyn
     assert.equal((await herbert.call(`/payments/${pending.id}/review`, { decision: 'accepted' })).status, 200);
     const m = (await zak.dashboard()).members.find((m) => m.id === zakId);
     assert.equal(m.accepted, 350000); assert.equal(m.credited, 250000); assert.equal(m.pocket, 100000); assert.equal(m.remaining, 0);
+    assert.equal(m.greenPocket, 70000);
     await zak.call('/payments', { amount: 900000, week: '2026-10-19', recipientId: michaelId });
     const rejected = (await zak.dashboard()).payments.find((p) => p.status === 'pending');
     await michael.call(`/payments/${rejected.id}/review`, { decision: 'rejected', note: 'Betrag stimmt nicht.' });
     const after = await zak.dashboard(); assert.equal(after.members.find((m) => m.id === zakId).accepted, 350000);
+    assert.equal(after.members.find((m) => m.id === zakId).greenPocket, 70000);
     assert.equal(after.payments.find((p) => p.id === rejected.id).review_note, 'Betrag stimmt nicht.');
+  });
+  await t.test('Grüngeld zieht 30 Prozent nur von der bestätigten eigenen Tasche ab und wird centgenau exportiert', async () => {
+    const azrael = client();
+    assert.equal((await azrael.register('Azrael Black')).status, 201);
+    await azrael.call('/payments', { amount: 350001, week: '2026-10-19', recipientId: michaelId });
+    let state = await azrael.dashboard();
+    assert.equal(state.members.find((m) => m.name === 'Azrael Black').greenPocket, 0);
+    const payment = state.payments.find((p) => p.member_name === 'Azrael Black');
+    assert.equal((await michael.call(`/payments/${payment.id}/review`, { decision: 'accepted' })).status, 200);
+    state = await azrael.dashboard();
+    const member = state.members.find((m) => m.name === 'Azrael Black');
+    assert.equal(member.credited, 250000); assert.equal(member.pocket, 100001);
+    assert.equal(member.greenPocket, 70000.7); assert.equal(member.accepted, 350001);
+    const csv = await michael.call('/export?week=2026-10-19');
+    assert.match(csv.data.split('\r\n')[0], /Grüngeld nach 30 % Abzug/);
+    assert.match(csv.data.split('\r\n').find((row) => row.includes('"Azrael Black"')), /;"70000,70"$/);
   });
   await t.test('Zieländerung rechnet die gewählte Woche neu; beide Admins dürfen verwalten', async () => {
     assert.equal((await herbert.call('/admin/settings', { week: '2026-10-19', goal: 300000, applyDefault: true })).status, 200);
     assert.equal((await outsider.call('/public-settings')).data.weeklyGoal, 300000);
     let state = await zak.dashboard(), m = state.members.find((m) => m.id === zakId);
-    assert.equal(m.credited, 300000); assert.equal(m.pocket, 50000); assert.equal(state.defaultGoal, 300000);
+    assert.equal(m.credited, 300000); assert.equal(m.pocket, 50000); assert.equal(m.greenPocket, 35000); assert.equal(state.defaultGoal, 300000);
     assert.equal((await michael.call('/admin/settings', { week: '2026-10-19', goal: 400000, applyDefault: false })).status, 200);
     assert.equal((await outsider.call('/public-settings')).data.weeklyGoal, 400000);
     state = await zak.dashboard(); m = state.members.find((m) => m.id === zakId);
-    assert.equal(m.remaining, 50000); assert.equal(m.pocket, 0); assert.equal(state.defaultGoal, 300000);
+    assert.equal(m.remaining, 50000); assert.equal(m.pocket, 0); assert.equal(m.greenPocket, 0); assert.equal(state.defaultGoal, 300000);
     assert.equal(state.activity.length, 0); assert.ok((await michael.dashboard()).activity.length > 0);
   });
   await t.test('CSV-Export ist nur für Admins verfügbar und enthält reale Kontowerte', async () => {

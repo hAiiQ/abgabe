@@ -14,6 +14,7 @@ const fail = (status, message) => { throw new HttpError(status, message); };
 const publicMember = (m) => ({ id: m.id, name: m.name, role: m.role });
 const validPassword = (password) => typeof password === 'string' && password.length >= 10 && password.length <= 128;
 const validMoney = (amount) => Number.isSafeInteger(amount) && amount > 0 && amount <= 1_000_000_000;
+const greenMoney = (blackMoney) => Math.round(blackMoney * 70) / 100;
 
 export function createApp({ db, adminSetupCode, production = false, clock = () => new Date(), disableRateLimit = false }) {
   if (production && (!adminSetupCode || adminSetupCode.length < 16)) throw new Error('ADMIN_SETUP_CODE muss mindestens 16 Zeichen lang sein.');
@@ -170,10 +171,10 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
       return { week, members, payments, weeks, settings, activity, resets };
     });
     const members = data.members.map((m) => {
-      const accepted = Number(m.accepted), pending = Number(m.pending);
+      const accepted = Number(m.accepted), pending = Number(m.pending), pocket = Math.max(0, accepted - data.week.goal);
       return { ...publicMember(m), active: Boolean(m.active), registered: Boolean(m.registered_at), accepted, pending,
         removed: Boolean(m.removed_at), removedAt: m.removed_at,
-        credited: Math.min(accepted, data.week.goal), pocket: Math.max(0, accepted - data.week.goal), remaining: Math.max(0, data.week.goal - accepted) };
+        credited: Math.min(accepted, data.week.goal), pocket, greenPocket: greenMoney(pocket), remaining: Math.max(0, data.week.goal - accepted) };
     });
     // Personal notes are visible to their author and the two administrators.
     const payments = data.payments.map((p) => ({ ...p, note: req.member.role === 'admin' || p.member_id === req.member.id ? p.note : '', review_note: req.member.role === 'admin' || p.member_id === req.member.id ? p.review_note : '' }));
@@ -322,8 +323,11 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
       return { week, rows };
     });
     const cell = (value) => `"${String(value).replaceAll('"', '""')}"`;
-    const rows = [['Woche ab', 'Mitglied', 'Wochenziel', 'Bestätigt', 'Abgabenkonto', 'Eigene Tasche', 'Offen', 'In Prüfung'],
-      ...result.rows.map((r) => [result.week.id, r.name, result.week.goal, r.accepted, Math.min(Number(r.accepted), result.week.goal), Math.max(0, Number(r.accepted) - result.week.goal), Math.max(0, result.week.goal - Number(r.accepted)), r.pending])];
+    const rows = [['Woche ab', 'Mitglied', 'Wochenziel', 'Bestätigt', 'Abgabenkonto', 'Eigene Tasche (Schwarzgeld)', 'Offen', 'In Prüfung', 'Eigene Tasche (Grüngeld nach 30 % Abzug)'],
+      ...result.rows.map((r) => {
+        const pocket = Math.max(0, Number(r.accepted) - result.week.goal);
+        return [result.week.id, r.name, result.week.goal, r.accepted, Math.min(Number(r.accepted), result.week.goal), pocket, Math.max(0, result.week.goal - Number(r.accepted)), r.pending, greenMoney(pocket).toFixed(2).replace('.', ',')];
+      })];
     res.type('text/csv').attachment(`abgaben-${result.week.id}.csv`).send('\uFEFF' + rows.map((r) => r.map(cell).join(';')).join('\r\n'));
   });
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Diese Funktion gibt es nicht.' }));

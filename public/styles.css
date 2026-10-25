@@ -20,3 +20,6 @@ dialog{background:#15221a;color:var(--text);border:1px solid #3b5742;border-radi
 .stat-card-total{border-color:#3d7256;background:linear-gradient(135deg,#1d392a,#15281d)}.stat-card-total .stat-value{color:var(--green)}
 @media(max-width:1100px){.stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:640px){.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.stat-card-total{grid-column:1/-1}}
+
+.money-type{display:block;font-size:9px;line-height:1.6;font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)}.green-money,.green-pocket-total{color:var(--green)}
+@media(max-width:640px){.own-breakdown .green-breakdown{grid-column:1/-1}}

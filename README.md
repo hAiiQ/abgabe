@@ -78,6 +78,8 @@ Die Startseite zeigt auch ohne Anmeldung das Ziel der laufenden Woche an. Änder
 
 In der Wochenübersicht zeigt **Gesamtbetrag** die Summe aller bestätigten Abgabenkonten und der eigenen Taschen für die ausgewählte Woche. Offene und abgelehnte Einträge werden nicht mitgerechnet. Erfasste Beträge entfernter Mitglieder bleiben enthalten.
 
+Die eigene Tasche wird pro Person zusätzlich als **Grüngeld nach 30 % Abzug** ausgewiesen: 100.000 $ Schwarzgeld entsprechen 70.000 $ Grüngeld. Die Berechnung verwendet nur den bestätigten Überschuss über dem Wochenziel und wird bei Zieländerungen neu berechnet. Die zusätzliche Anzeige steht in der Mitgliederliste, im persönlichen Konto und im CSV-Export. Bei Bruchteilen werden zwei Nachkommastellen angezeigt; der CSV-Export verwendet ein deutsches Dezimalkomma. Der Gesamtbetrag summiert weiterhin die ursprünglichen Schwarzgeldbeträge.
+
 ## Lokal starten
 
 Voraussetzung: Node.js **22.17 oder neuer innerhalb der 22er-Reihe**.
