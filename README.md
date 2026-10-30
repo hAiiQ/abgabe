@@ -47,8 +47,8 @@ In Produktion verlangt die Anwendung einen gültigen Einrichtungscode und einen 
 - Registrierung mit vollständigem Namen von der Liste und selbst gewähltem Passwort (10–128 Zeichen). Groß-/Kleinschreibung und zusätzliche Leerzeichen werden toleriert, andere Namen nicht.
 - Ein Name kann nur einmal registriert werden. Die Namensregistrierung allein ist kein Identitätsnachweis; der erste Registrierende belegt das jeweilige Mitgliedskonto. Deshalb den Link gezielt an eure Mitglieder geben. Die beiden Adminkonten sind zusätzlich durch den Einrichtungscode geschützt.
 - Persönliche Anmeldung, Abmeldung und Passwortänderung über das Profil rechts oben. Passwörter werden mit scrypt gehasht gespeichert; Sitzungen liegen in der Datenbank und werden per HttpOnly-Cookie übertragen.
-- Übersicht über alle Mitglieder mit Suche und Filtern. Alle angemeldeten Mitglieder sehen die Kontostände und Abgaben. Persönliche Notizen und Ablehnungsbegründungen sehen nur die betroffene Person und die Admins.
-- Beliebig viele Abgabeneinträge pro laufender Woche, jeweils an Michael oder Herbert. Es werden nur ganze Dollarbeträge akzeptiert.
+- Übersicht über alle Mitglieder mit Suche und Filtern. Alle angemeldeten Mitglieder sehen die Kontostände und Abgaben. Persönliche Notizen und Ablehnungsbegründungen sehen die betroffene Person, die Admins und der aktuell zur Abgabenannahme berechtigte Empfänger des Eintrags.
+- Beliebig viele Abgabeneinträge pro laufender Woche, jeweils an einen freigegebenen Empfänger. Es werden nur ganze Dollarbeträge akzeptiert.
 - Michael und Herbert können offene Einträge unabhängig vom eingetragenen Empfänger bestätigen oder ablehnen. Freigaben können auch nach Ende der betreffenden Woche erfolgen. Bereits bearbeitete Einträge lassen sich nicht doppelt gutschreiben.
 - Standard-Wochenziel **250.000 $ je Mitglied**, durch beide Admins einstellbar. Die Admins können das Ziel der gewählten Woche ändern und optional als Standard für neu angelegte Wochen übernehmen. Andere bereits angelegte Wochen behalten ihr Ziel.
 - Automatische Aufteilung in **Abgabenkonto** und **Eigene Tasche**. Änderungen am Wochenziel berechnen diese Aufteilung anhand der bestätigten Beträge neu.
@@ -85,6 +85,12 @@ Die eigene Tasche wird pro Person zusätzlich als **Grüngeld nach 30 % Abzug** 
 Unter **Wochenarchiv** stehen alle gespeicherten Wochen seit dem 19.10.2026, einschließlich der laufenden Woche. Jede Woche zeigt ihr eigenes Ziel, bestätigte Schwarzgeldbeträge und die Anzahl der Abgabeneinträge. **Abgaben ansehen** öffnet den Verlauf; **Wochenübersicht** zeigt Mitgliederbeträge, Grüngeld und Auszahlungsmarkierungen dieser Woche. Admins können die jeweilige Woche zusätzlich als CSV herunterladen und offene Einträge weiterhin bearbeiten.
 
 Die gewählte Woche steht in der Seitenadresse und bleibt dadurch nach Neuladen oder erneutem Anmelden ausgewählt. Mit **Zur aktuellen Woche** wird wieder die laufende Woche geöffnet. Daten älterer Wochen bleiben beim automatischen Wochenwechsel gespeichert. Neue Abgaben sind weiterhin nur in der laufenden Woche möglich.
+
+### Weitere Empfänger für Abgaben freigeben
+
+Unter **Verwaltung → Abgabenannahme** können Michael und Herbert weitere aktive Mitglieder mit **Freigeben** zur Abgabenannahme berechtigen. Diese Mitglieder erscheinen sofort in der Empfängerauswahl bei neuen Abgaben und erhalten den Bereich **Freigaben**. Dort können sie ausschließlich Einträge bestätigen oder ablehnen, die bei ihnen eingetragen wurden – auch aus alten Wochen. Michael und Herbert dürfen weiterhin alle offenen Einträge prüfen.
+
+**Freigabe entziehen** beendet diese Berechtigung sofort, auch in bestehenden Sitzungen. Bisherige Abgaben, Empfängernamen und Bestätigungen bleiben gespeichert; offene Einträge können die Admins übernehmen. Änderungen werden im Verwaltungsprotokoll erfasst. Gesperrte oder entfernte Mitglieder können nicht als Empfänger gewählt werden. Die Berechtigung bleibt beim Sperren/Entfernen gespeichert und wird nach Freigeben/Wiederherstellen des Zugangs wieder wirksam, sofern sie nicht separat entzogen wurde. Weitere Empfänger erhalten keine Mitgliederverwaltung, Zieländerungen, Resets oder Auszahlungsrechte. Die Freigabe ist auch vor der ersten Registrierung möglich; das Mitglied wählt weiterhin selbst sein Passwort.
 
 ### Eigene Tasche als ausgezahlt markieren
 
@@ -134,11 +140,12 @@ Die Schriftarten Manrope und DM Sans werden unter der SIL Open Font License ausg
 
 ## Mitglieder und Resets verwalten
 
-Michael und Herbert sehen unter **Verwaltung** drei Bereiche:
+Michael und Herbert sehen unter **Verwaltung** vier Bereiche:
 
 1. **Mitglieder:** Mit „Mitglied hinzufügen“ einen vollständigen Namen freigeben. Das neue Mitglied registriert sich anschließend selbst und wählt sein Passwort. Bei jedem Mitglied bietet „Aktion wählen“ die verfügbaren Verwaltungsaktionen an.
-2. **Wochenziel & Protokoll:** Wochenziel einstellen, CSV exportieren und die letzten Verwaltungsänderungen nachvollziehen.
-3. **Abgaben zurücksetzen:** Über die Wochenauswahl oben und die Auswahl „Alle Mitglieder“ bzw. einen einzelnen Namen den Umfang festlegen. Nach Eingabe von `ZURÜCKSETZEN` werden die gewählten Abgabeneinträge aus der Berechnung genommen. Unter „Wiederherstellbare Resets“ können sie mit ihrem ursprünglichen Status zurückgeholt werden. Neue Einträge nach dem Reset bleiben dabei erhalten und werden zusätzlich berücksichtigt.
+2. **Abgabenannahme:** Weitere Empfänger freigeben oder ihre Freigabe entziehen.
+3. **Wochenziel & Protokoll:** Wochenziel einstellen, CSV exportieren und die letzten Verwaltungsänderungen nachvollziehen.
+4. **Abgaben zurücksetzen:** Über die Wochenauswahl oben und die Auswahl „Alle Mitglieder“ bzw. einen einzelnen Namen den Umfang festlegen. Nach Eingabe von `ZURÜCKSETZEN` werden die gewählten Abgabeneinträge aus der Berechnung genommen. Unter „Wiederherstellbare Resets“ können sie mit ihrem ursprünglichen Status zurückgeholt werden. Neue Einträge nach dem Reset bleiben dabei erhalten und werden zusätzlich berücksichtigt.
 
 ### Zugang sperren oder wieder freigeben
 

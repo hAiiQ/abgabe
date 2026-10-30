@@ -11,7 +11,8 @@ class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 const fail = (status, message) => { throw new HttpError(status, message); };
-const publicMember = (m) => ({ id: m.id, name: m.name, role: m.role });
+const canReceive = (m) => m.role === 'admin' || Boolean(m.can_receive);
+const publicMember = (m) => ({ id: m.id, name: m.name, role: m.role, canReceive: canReceive(m) });
 const validPassword = (password) => typeof password === 'string' && password.length >= 10 && password.length <= 128;
 const validMoney = (amount) => Number.isSafeInteger(amount) && amount > 0 && amount <= 1_000_000_000;
 const greenMoney = (blackMoney) => Math.round(blackMoney * 70) / 100;
@@ -56,10 +57,10 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
   app.use('/api', async (req, _res, next) => {
     const rawCookie = req.headers.cookie?.split(';').map((v) => v.trim()).find((v) => v.startsWith('abgabe_session='))?.slice(15);
     if (rawCookie && /^[a-f0-9]{64}$/.test(rawCookie)) {
-      const session = await db.read((tx) => tx.get(`SELECT s.*, m.name, m.role FROM sessions s JOIN members m ON m.id = s.member_id
+      const session = await db.read((tx) => tx.get(`SELECT s.*, m.name, m.role, m.can_receive FROM sessions s JOIN members m ON m.id = s.member_id
         WHERE s.token_hash = ? AND s.expires_at > ? AND m.active = 1 AND m.removed_at IS NULL`, [tokenHash(rawCookie), clock().toISOString()]));
       if (session) {
-        req.member = { id: session.member_id, name: session.name, role: session.role };
+        req.member = publicMember({ ...session, id: session.member_id });
         req.session = session;
       }
     }
@@ -71,6 +72,7 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     next();
   };
   const requireAdmin = (req, _res, next) => req.member?.role === 'admin' ? next() : next(new HttpError(403, 'Nur Michael Black und Herbert Petersen dürfen das.'));
+  const requireReceiver = (req, _res, next) => req.member?.canReceive ? next() : next(new HttpError(403, 'Du bist nicht für die Abgabenannahme freigegeben.'));
   async function createSession(tx, memberId) {
     const token = randomToken(), csrf = randomToken();
     const expires = new Date(clock().getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -163,11 +165,11 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     const data = await db.transaction(async (tx) => {
       await ensureWeeks(tx, now);
       const week = await tx.get('SELECT * FROM weeks WHERE id = ?', [selected]);
-      const members = await tx.all(`SELECT m.id, m.name, m.role, m.registered_at, m.active, m.removed_at,
+      const members = await tx.all(`SELECT m.id, m.name, m.role, m.registered_at, m.active, m.removed_at, m.can_receive,
         COALESCE(SUM(CASE WHEN p.status = 'accepted' THEN p.amount ELSE 0 END), 0) AS accepted,
         COALESCE(SUM(CASE WHEN p.status = 'pending' THEN p.amount ELSE 0 END), 0) AS pending
         FROM members m LEFT JOIN payments p ON p.member_id = m.id AND p.week_id = ? AND p.reset_id IS NULL
-        GROUP BY m.id, m.name, m.role, m.registered_at, m.active, m.removed_at ORDER BY m.name`, [selected]);
+        GROUP BY m.id, m.name, m.role, m.registered_at, m.active, m.removed_at, m.can_receive ORDER BY m.name`, [selected]);
       const payments = await tx.all(`SELECT p.*, m.name AS member_name, r.name AS recipient_name, reviewer.name AS reviewer_name
         FROM payments p JOIN members m ON m.id = p.member_id JOIN members r ON r.id = p.recipient_id
         LEFT JOIN members reviewer ON reviewer.id = p.reviewed_by WHERE p.week_id = ? AND p.reset_id IS NULL ORDER BY p.created_at DESC, p.id DESC`, [selected]);
@@ -196,8 +198,11 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
         payout: payoutInfo(pocket, payouts.get(m.id)),
         credited: Math.min(accepted, data.week.goal), pocket, greenPocket: greenMoney(pocket), remaining: Math.max(0, data.week.goal - accepted) };
     });
-    // Personal notes are visible to their author and the two administrators.
-    const payments = data.payments.map((p) => ({ ...p, note: req.member.role === 'admin' || p.member_id === req.member.id ? p.note : '', review_note: req.member.role === 'admin' || p.member_id === req.member.id ? p.review_note : '' }));
+    // Receivers may read notes only for payments assigned to them; admins can review all payments.
+    const payments = data.payments.map((p) => {
+      const mayRead = req.member.role === 'admin' || p.member_id === req.member.id || (req.member.canReceive && p.recipient_id === req.member.id);
+      return { ...p, note: mayRead ? p.note : '', review_note: mayRead ? p.review_note : '' };
+    });
     res.json({ user: req.member, csrf: req.session.csrf_token, timeZone: TIME_ZONE, now: now.toISOString(), activeWeek,
       week: { id: data.week.id, end: addDays(data.week.id, 7), goal: data.week.goal, canSubmit: selected === activeWeek && activeWeek >= FIRST_WEEK },
       weeks: data.weeks.map((week) => ({ id: week.id, goal: week.goal, entryCount: Number(week.entry_count),
@@ -215,21 +220,25 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
     await db.transaction(async (tx) => {
       const author = await lockMember(tx, req.member.id);
       if (!author?.active || author.removed_at) fail(401, 'Dein Zugang wurde zwischenzeitlich geändert. Bitte erneut anmelden.');
-      const recipient = await tx.get("SELECT id FROM members WHERE id = ? AND role = 'admin' AND active = 1", [recipientId || '']);
-      if (!recipient) fail(400, 'Bitte Michael Black oder Herbert Petersen als Empfänger wählen.');
+      const recipient = await tx.get("SELECT id FROM members WHERE id = ? AND (role = 'admin' OR can_receive = 1) AND active = 1 AND removed_at IS NULL", [recipientId || '']);
+      if (!recipient) fail(400, 'Bitte einen freigegebenen Abgabenempfänger wählen.');
       await ensureWeeks(tx, clock());
       await tx.run(`INSERT INTO payments(id, member_id, week_id, amount, recipient_id, note, status, created_at)
         VALUES(?, ?, ?, ?, ?, ?, 'pending', ?)`, [randomUUID(), req.member.id, week, amount, recipientId, note.trim(), clock().toISOString()]);
     });
     res.status(201).json({ ok: true });
   });
-  app.post('/api/payments/:id/review', requireAuth, requireAdmin, async (req, res) => {
+  app.post('/api/payments/:id/review', requireAuth, requireReceiver, async (req, res) => {
     const { decision, note = '' } = req.body;
     if (!['accepted', 'rejected'].includes(decision)) fail(400, 'Bitte annehmen oder ablehnen wählen.');
     if (typeof note !== 'string' || note.length > 300) fail(400, 'Die Begründung darf höchstens 300 Zeichen haben.');
     await db.transaction(async (tx) => {
+      const reviewer = await lockMember(tx, req.member.id);
+      if (!reviewer?.active || reviewer.removed_at || !canReceive(reviewer)) fail(403, 'Deine Freigabe für die Abgabenannahme wurde geändert. Bitte die Seite neu laden.');
+      const payment = await tx.get('SELECT recipient_id FROM payments WHERE id = ?', [req.params.id]);
+      if (reviewer.role !== 'admin' && payment?.recipient_id !== reviewer.id) fail(403, 'Du darfst nur Abgaben bestätigen oder ablehnen, die bei dir eingetragen wurden.');
       const result = await tx.run(`UPDATE payments SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ? WHERE id = ? AND status = 'pending' AND reset_id IS NULL`,
-        [decision, req.member.id, clock().toISOString(), note.trim(), req.params.id]);
+        [decision, reviewer.id, clock().toISOString(), note.trim(), req.params.id]);
       if (result.rowCount !== 1) fail(409, 'Dieser Eintrag wurde bereits bearbeitet oder existiert nicht.');
       await audit(tx, req.member.id, `payment_${decision}`, { paymentId: req.params.id });
     });
@@ -260,6 +269,20 @@ export function createApp({ db, adminSetupCode, production = false, clock = () =
       await audit(tx, req.member.id, 'member_added', { memberId: member.id, name });
     });
     res.status(201).json({ member });
+  });
+  app.post('/api/admin/members/:id/receiver', requireAuth, requireAdmin, async (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') fail(400, 'Bitte eine gültige Freigabe angeben.');
+    await db.transaction(async (tx) => {
+      const member = await lockMember(tx, req.params.id);
+      if (!member) fail(404, 'Mitglied nicht gefunden.');
+      if (member.role === 'admin') fail(403, 'Die beiden Administratoren dürfen immer Abgaben annehmen.');
+      if (member.removed_at) fail(409, 'Bitte das Mitglied zuerst wiederherstellen.');
+      if (enabled && !member.active) fail(409, 'Bitte den Zugang des Mitglieds zuerst freigeben.');
+      await tx.run('UPDATE members SET can_receive = ? WHERE id = ?', [enabled ? 1 : 0, member.id]);
+      if (Boolean(member.can_receive) !== enabled) await audit(tx, req.member.id, enabled ? 'receiver_enabled' : 'receiver_disabled', { memberId: member.id, name: member.name });
+    });
+    res.json({ ok: true });
   });
   app.post('/api/admin/members/:id/payout', requireAuth, requireAdmin, async (req, res) => {
     const { week, expectedPocket, expectedPaidPocket } = req.body;

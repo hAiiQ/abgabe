@@ -26,8 +26,9 @@ test('Bestehende Datenbank wird ohne Datenverlust migriert; Sperren bleiben nach
     db = await createDatabase({ sqlitePath: path });
     const before = await db.read((tx) => tx.get('SELECT * FROM members WHERE id = ?', ['legacy-zak']));
     assert.equal(before.password_hash, 'existing-password-hash'); assert.equal(before.active, 1); assert.equal(before.reset_token_hash, null);
+    assert.equal(before.can_receive, 0);
     await db.transaction(async (tx) => {
-      await tx.run('UPDATE members SET active = 0, removed_at = ? WHERE id = ?', ['2026-10-20T12:00:00Z', 'legacy-zak']);
+      await tx.run('UPDATE members SET active = 0, can_receive = 1, removed_at = ? WHERE id = ?', ['2026-10-20T12:00:00Z', 'legacy-zak']);
       await tx.run('INSERT INTO weeks(id, goal) VALUES(?, ?)', ['2026-10-19', 250000]);
       const actor = await tx.get('SELECT id FROM members WHERE name = ?', ['Michael Black']);
       await tx.run('INSERT INTO payouts(member_id, week_id, pocket_amount, green_cents, paid_at, paid_by) VALUES(?, ?, ?, ?, ?, ?)', ['legacy-zak', '2026-10-19', 100, 7000, '2026-10-20T12:00:00Z', actor.id]);
@@ -37,6 +38,7 @@ test('Bestehende Datenbank wird ohne Datenverlust migriert; Sperren bleiben nach
     const after = await db.read((tx) => tx.get('SELECT * FROM members WHERE id = ?', ['legacy-zak']));
     assert.equal(after.active, 0); assert.equal(after.password_hash, 'existing-password-hash');
     assert.equal(after.removed_at, '2026-10-20T12:00:00Z');
+    assert.equal(after.can_receive, 1);
     const payout = await db.read((tx) => tx.get('SELECT * FROM payouts WHERE member_id = ? AND week_id = ?', ['legacy-zak', '2026-10-19']));
     assert.equal(Number(payout.pocket_amount), 100); assert.equal(Number(payout.green_cents), 7000);
     assert.equal(payout.paid_at, '2026-10-20T12:00:00Z');
